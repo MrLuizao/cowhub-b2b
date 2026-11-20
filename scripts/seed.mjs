@@ -1,0 +1,359 @@
+#!/usr/bin/env node
+/// Siembra el esquema completo de FIRESTORE.md en el proyecto real.
+/// Uso: node scripts/seed.mjs   (lee service-account.json de la raíz)
+/// Crea usuarios Auth de staff y miembros demo — password: demo1234
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+import { cert, initializeApp } from 'firebase-admin/app';
+import { getAuth } from 'firebase-admin/auth';
+import { FieldValue, Timestamp, getFirestore } from 'firebase-admin/firestore';
+
+const sa = JSON.parse(
+  readFileSync(resolve(process.cwd(), 'service-account.json'), 'utf8'),
+);
+const app = initializeApp({ credential: cert(sa) });
+const db = getFirestore(app);
+const auth = getAuth(app);
+
+const DEMO_PASSWORD = 'demo1234';
+const DAY = 86_400_000;
+const TZ = 'America/Mexico_City';
+const now = Date.now();
+
+async function ensureUser(email, displayName) {
+  try {
+    return (await auth.getUserByEmail(email)).uid;
+  } catch {
+    return (await auth.createUser({ email, password: DEMO_PASSWORD, displayName })).uid;
+  }
+}
+
+function localDate(date) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(date);
+}
+
+function trafficCurve(seed) {
+  const arr = new Array(24).fill(0);
+  let a = seed;
+  const rnd = () => {
+    a |= 0; a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  for (let h = 6; h <= 22; h++) {
+    const base = 0.16 + 0.52 * Math.exp(-((h - 8) ** 2) / 4.5) + 0.78 * Math.exp(-((h - 19) ** 2) / 5.5);
+    arr[h] = Math.round(Math.max(0.05, base + (rnd() - 0.5) * 0.08) * 40);
+  }
+  return arr;
+}
+
+console.log('Sembrando en proyecto', sa.project_id);
+
+// ═══ config/brand ═══
+await db.collection('config').doc('brand').set({
+  name: 'COW-HUB',
+  logo_url: '',
+  colors: { primary: '#8b5cf6', accent: '#ec4899', background: '#08080d' },
+  timezone: TZ,
+  currency: 'MXN',
+  socials: {},
+});
+
+// ═══ config/ads — venta directa de publicidad (self-serve /anuncia) ═══
+await db.collection('config').doc('ads').set({
+  enabled: true,
+  slots: {
+    carousel: { enabled: true, price_per_week: 500 },
+    list: { enabled: true, price_per_week: 250 },
+    both: { enabled: true, price_per_week: 650 },
+  },
+  /// Avisos de solicitudes pagadas — global siempre; by_branch solo si
+  /// la orden compró esa sede ("todas" avisa a todos).
+  notify: { global: [], by_branch: {} },
+});
+
+// ═══ branches ═══
+const branches = [
+  { id: 'select', name: 'Metepec Centro', max: 120, open: 420, close: 1260, address: 'Paseo San Isidro 111, Metepec', lat: 19.2548, lng: -99.6057 },
+  { id: 'cowork', name: 'Coworking Flexible', max: 60, open: 420, close: 1260, address: 'Paseo San Isidro 111, Metepec', lat: 19.2549, lng: -99.6056 },
+  { id: 'salas', name: 'Salas de Juntas', max: 40, open: 420, close: 1260, address: 'Paseo San Isidro 111, Metepec', lat: 19.2547, lng: -99.6058 },
+  { id: 'auditorio', name: 'Auditorio Metepec', max: 200, open: 480, close: 1260, address: 'Paseo San Isidro 111, Metepec', lat: 19.2546, lng: -99.6059 },
+];
+for (const b of branches) {
+  await db.collection('branches').doc(b.id).set({
+    name: b.name, image_url: `https://picsum.photos/seed/ch-${b.id}/800/500`,
+    address: b.address, max_capacity: b.max, current_capacity: 0,
+    status: 'OPEN', open_minutes: b.open, close_minutes: b.close,
+    lat: b.lat, lng: b.lng,
+  });
+}
+console.log('✓ branches:', branches.length);
+
+// ═══ plans ═══
+const plans = [
+  { id: 'classic', name: 'Plan Classic', price: 199, features: ['Acceso a 1 sede', 'Acceso a espacios reservables', 'Pase digital QR'], highlight: false, all: false },
+  { id: 'plus', name: 'Plan Plus', price: 299, features: ['Acceso a todas las sedes', 'Acceso a espacios reservables', 'Invita a 1 amigo/mes'], highlight: false, all: true },
+  { id: 'black', name: 'Plan Black', price: 399, features: ['Acceso a todas las sedes', 'Espacios + invitados ilimitados', 'Cupones exclusivos'], highlight: true, all: true },
+  { id: 'select', name: 'Plan Hot Desk', price: 249, features: ['Solo sede Metepec', 'Zona premium', 'Pase digital QR'], highlight: false, all: false },
+  { id: 'cowork', name: 'Plan Flex', price: 179, features: ['Solo coworking flexible', 'Horario extendido', 'Pase digital QR'], highlight: false, all: false },
+];
+for (const p of plans) {
+  await db.collection('plans').doc(p.id).set({
+    name: p.name, price: p.price, features: p.features,
+    highlight: p.highlight, all_branches: p.all,
+    stripe_product_id: null, stripe_price_id: null, active: true,
+  });
+}
+console.log('✓ plans:', plans.length);
+
+// ═══ hosts ═══
+const hosts = [
+  { id: 't1', name: 'Marcos Villalba', specialty: 'Recepción · Operación', branchIds: ['select', 'salas'], shift: 'MAÑANA', onDuty: true },
+  { id: 't2', name: 'Lucía Ortega', specialty: 'Comunidad · Eventos', branchIds: ['select'], shift: 'MAÑANA', onDuty: true },
+  { id: 't3', name: 'Diego Salas', specialty: 'Reservas · Agenda', branchIds: ['salas', 'auditorio'], shift: 'TARDE', onDuty: true },
+  { id: 't4', name: 'Carla Mendoza', specialty: 'Hospitalidad', branchIds: ['auditorio', 'select'], shift: 'TARDE', onDuty: false },
+  { id: 't5', name: 'Iván Paredes', specialty: 'Auditorio · Producción', branchIds: ['cowork', 'auditorio'], shift: 'NOCHE', onDuty: false },
+];
+for (const t of hosts) {
+  await db.collection('hosts').doc(t.id).set({
+    branch_ids: t.branchIds, name: t.name, specialty: t.specialty,
+    photo_url: `https://picsum.photos/seed/ch-${t.id}/300/300`,
+    shift: t.shift, is_on_duty: t.onDuty, active: true,
+  });
+}
+console.log('✓ hosts:', hosts.length);
+
+// ═══ activities ═══
+const activities = [
+  { id: 'cl1', name: 'Salón de Juntas Modular', hostId: 't1', host: 'Marcos Villalba', branchIds: ['select', 'salas'], room: 'Sala Andamio', start: 540, end: 660, cap: 12, times: { salas: { start_minutes: 720, end_minutes: 840, room: 'Sala Proyector' } } },
+  { id: 'cl2', name: 'Auditorio Metepec', hostId: 't2', host: 'Lucía Ortega', branchIds: ['auditorio'], room: 'Auditorio', start: 540, end: 900, cap: 120, times: {} },
+  { id: 'cl3', name: 'Cabinas Focus', hostId: 't3', host: 'Diego Salas', branchIds: ['cowork'], room: 'Cabina 1', start: 780, end: 840, cap: 8, times: {} },
+  { id: 'cl4', name: 'Terraza Sur', hostId: 't4', host: 'Carla Mendoza', branchIds: ['select'], room: 'Terraza', start: 1020, end: 1080, cap: 30, times: {} },
+  { id: 'cl4b', name: 'Hot Desk Flexible', hostId: '', host: 'Roxana Medina', branchIds: ['cowork'], room: 'Área abierta', start: 540, end: 1140, cap: 40, times: {} },
+  { id: 'cl4b2', name: 'Sala Andamio', hostId: 't5', host: 'Iván Paredes', branchIds: ['select'], room: 'Andamio', start: 600, end: 720, cap: 10, times: {} },
+];
+for (const c of activities) {
+  await db.collection('activities').doc(c.id).set({
+    name: c.name, branch_ids: c.branchIds, host_id: c.hostId, host: c.host,
+    room: c.room, start_minutes: c.start, end_minutes: c.end,
+    capacity: c.cap, booked: 0, branch_times: c.times,
+  });
+}
+console.log('✓ activities:', activities.length);
+
+// ═══ staff auth + docs ═══
+const staffDefs = [
+  { email: 'admin@cowhub.mx', name: 'Admin Global', role: 'ADMIN', branch: null },
+  { email: 'gerente@cowhub.mx', name: 'Gerente VIP', role: 'MANAGER', branch: 'select' },
+  { email: 'recepcion@cowhub.mx', name: 'Recepción VIP', role: 'RECEPTIONIST', branch: 'select' },
+];
+for (const s of staffDefs) {
+  const uid = await ensureUser(s.email, s.name);
+  await db.collection('staff').doc(uid).set({
+    name: s.name, role: s.role, branch_id: s.branch, active: true,
+  });
+}
+console.log('✓ staff:', staffDefs.map((s) => s.email).join(', '));
+
+// ═══ members (auth + users) ═══
+const members = [
+  { email: 'miembro1@cowhub.mx', name: 'Luis Rojas', branch: 'select', plan: 'black', num: 'CH-00421', until: now + 45 * DAY, status: 'ACTIVE' },
+  { email: 'miembro2@cowhub.mx', name: 'Carla Mendoza', branch: 'auditorio', plan: 'plus', num: 'CH-01187', until: now - 12 * DAY, status: 'EXPIRED' },
+  { email: 'miembro3@cowhub.mx', name: 'Diego Salas', branch: 'salas', plan: 'select', num: 'CH-00873', until: now + 30 * DAY, status: 'ACTIVE' },
+  { email: 'miembro4@cowhub.mx', name: 'Roxana Vega', branch: 'select', plan: 'black', num: 'CH-00219', until: now - 1 * DAY, status: 'ACTIVE' },
+  { email: 'miembro5@cowhub.mx', name: 'Iván Paredes', branch: 'cowork', plan: 'cowork', num: 'CH-01540', until: now - 40 * DAY, status: 'EXPIRED' },
+];
+const memberIds = [];
+for (const m of members) {
+  const uid = await ensureUser(m.email, m.name);
+  memberIds.push(uid);
+  await db.collection('users').doc(uid).set({
+    branch_id: m.branch, name: m.name,
+    photo_url: `https://picsum.photos/seed/ch-${m.num}/300/300`,
+    member_number: m.num, qr_code: uid,
+    membership_status: m.status, membership_plan_id: m.plan,
+    membership_until: Timestamp.fromMillis(m.until),
+    first_name: null, middle_name: null, paternal_last_name: null,
+    maternal_last_name: null, sex: null, birth_date: null,
+    phone: null, id_number: null,
+    stripe_customer_id: null, last_checkin_at: null,
+    active_checkin_id: null, active_checkin_branch: null,
+    weekly_goal: 4, points: 0,
+    created_at: FieldValue.serverTimestamp(),
+  });
+}
+console.log('✓ members:', members.length);
+
+// ═══ visits (historial de lealtad, 14 días) ═══
+// Patrón por miembro: miembro1 constante (6/sem), miembro3 medio (3/sem).
+const visitPatterns = [6, 0, 3, 5, 0];
+for (let i = 0; i < memberIds.length; i++) {
+  const daysAgo = visitPatterns[i];
+  if (!daysAgo) continue;
+  for (let d = 1; d <= 14; d++) {
+    /// salta domingos y ~cada 3er día según el patrón del miembro
+    const date = new Date(now - d * DAY);
+    if (date.getDay() === 0 || (d + i) % Math.max(2, 8 - daysAgo) !== 0) continue;
+    await db.collection('users').doc(memberIds[i]).collection('visits')
+      .doc(localDate(date)).set({
+        branch_id: members[i].branch, checkin_id: null,
+        at: Timestamp.fromMillis(date.getTime()),
+      });
+  }
+}
+console.log('✓ visits (lealtad)');
+
+// ═══ rewards (catálogo fijo) ═══
+const rewards = [
+  { id: 'smoothie', name: 'Smoothie gratis', desc: 'Un smoothie del bar al final de tu jornada', cost: 50, icon: 'cup' },
+  { id: 'guest-pass', name: 'Pase de invitado', desc: 'Un día gratis para un acompañante', cost: 100, icon: 'users' },
+  { id: 'pt-session', name: 'Sesión de mentoría', desc: '30 minutos de sesión personalizada', cost: 200, icon: 'dumbbell' },
+  { id: 'week-free', name: 'Semana gratis', desc: '7 días de extensión en tu membresía', cost: 350, icon: 'calendar' },
+  { id: 'merch', name: 'Kit merch COW-HUB', desc: 'Taza + kit de la marca COW-HUB', cost: 500, icon: 'shirt' },
+];
+for (const r of rewards) {
+  await db.collection('rewards').doc(r.id).set({
+    name: r.name, description: r.desc, points_cost: r.cost,
+    icon: r.icon, image_url: '', active: true,
+    created_at: FieldValue.serverTimestamp(),
+  });
+}
+console.log('✓ rewards:', rewards.length);
+
+// ═══ payments (historial) ═══
+const paySeeds = [
+  { m: 0, plan: 'black', planName: 'Plan Black', amount: 399, method: 'terminal', ago: 1 },
+  { m: 2, plan: 'select', planName: 'Plan Hot Desk', amount: 249, method: 'terminal', ago: 1 },
+  { m: 3, plan: 'black', planName: 'Plan Black', amount: 399, method: 'cash', ago: 0.7, declined: true },
+  { m: 1, plan: 'plus', planName: 'Plan Plus', amount: 299, method: 'cash', ago: 1.5 },
+];
+for (let i = 0; i < paySeeds.length; i++) {
+  const s = paySeeds[i];
+  await db.collection('payments').add({
+    member_id: memberIds[s.m], member_name: members[s.m].name,
+    member_number: members[s.m].num, branch_id: members[s.m].branch,
+    plan_id: s.plan, plan: s.planName, amount: s.amount, currency: 'mxn',
+    provider: 'manual', method: s.method,
+    transaction_id: `TX-SEED-${i + 1}`,
+    stripe_payment_intent_id: null, stripe_charge_id: null, receipt_url: null,
+    status: s.declined ? 'DECLINED' : 'APPROVED',
+    failure_reason: s.declined ? 'Fondos insuficientes' : null,
+    created_at: Timestamp.fromMillis(now - s.ago * DAY),
+    created_by: 'reception',
+  });
+}
+console.log('✓ payments:', paySeeds.length);
+
+// ═══ promotions ═══
+await db.collection('promotions').doc('banner-1').set({
+  type: 'banner', branch_id: null,
+  title: 'Café de especialidad 25% OFF',
+  subtitle: 'Café de barra · solo esta semana',
+  badge: '-25%', image_url: 'https://picsum.photos/seed/ch-banner-1/900/500',
+  created_at: Timestamp.fromMillis(now - DAY), expires_at: null,
+});
+const coupons = [
+  { id: 'c1', title: 'Café de especialidad -25%', desc: 'En el café de barra de recepción', badge: '-25%', code: 'CH-PRO25', plans: ['plus', 'black'] },
+  { id: 'c2', title: 'Invita a un amigo', desc: 'Espacio gratis para un acompañante', badge: '1 FREE', code: 'CH-GUEST1', plans: ['black'] },
+  { id: 'c3', title: 'Bebidas 2x1', desc: 'Bebidas de recepción después de las 18:00', badge: '2x1', code: 'CH-BEB2X1', plans: ['classic', 'plus', 'select', 'cowork'] },
+  { id: 'c4', title: 'Merch COW-HUB -15%', desc: 'Tazas, organizadores y accesorios', badge: '-15%', code: 'CH-MERCH15', plans: ['classic', 'select', 'cowork'] },
+];
+for (const c of coupons) {
+  await db.collection('promotions').doc(c.id).set({
+    type: 'coupon', branch_id: null, title: c.title, description: c.desc,
+    badge: c.badge, code: c.code, plan_ids: c.plans,
+    created_at: Timestamp.fromMillis(now - 2 * DAY), expires_at: null,
+  });
+}
+console.log('✓ promotions: 1 banner +', coupons.length, 'cupones');
+
+// ═══ sponsorAds ═══
+const ads = [
+  { id: 'ad1', advertiser: 'Café del Centro', title: 'Café de especialidad -20%', color: 0xfff97316, branch: null, status: 'ACTIVE', imp: 8420, taps: 512, ends: 30 },
+  { id: 'ad2', advertiser: 'Papelería Office', title: 'Cuadernos y plumas -15%', color: 0xffef4444, branch: 'select', status: 'ACTIVE', imp: 3210, taps: 198, ends: 15 },
+  { id: 'ad3', advertiser: 'Coworking Partners', title: 'Estacionamiento -10% en coworking', color: 0xff22c55e, branch: 'salas', status: 'PAUSED', imp: 1180, taps: 74, ends: 45 },
+];
+for (const a of ads) {
+  await db.collection('sponsorAds').doc(a.id).set({
+    advertiser: a.advertiser, title: a.title,
+    subtitle: 'Solo con tu credencial de miembro', badge: 'ALIADO',
+    brand_color: a.color, image_url: `https://picsum.photos/seed/${a.id}/700/400`,
+    cta_label: 'Ver oferta', branch_id: a.branch, status: a.status,
+    ends_at: Timestamp.fromMillis(now + a.ends * DAY),
+    impressions: a.imp, taps: a.taps,
+    description: '', address: '', lat: 19.25, lng: -99.6, phone: '',
+    socials: {}, photos: [],
+    created_at: Timestamp.fromMillis(now - 10 * DAY),
+  });
+}
+console.log('✓ sponsorAds:', ads.length);
+
+// ═══ pushLogs + store ═══
+await db.collection('pushLogs').add({
+  title: 'Tour guiado del centro', body: 'Agenda tu visita al Business Center este sábado a las 11:00.',
+  audience: 'ALL', branch_id: null, kind: 'BRAND',
+  status: 'SENT', scheduled_at: null, sent: 1248,
+  created_at: Timestamp.fromMillis(now - DAY / 2),
+});
+const products = [
+  { name: 'Café de especialidad 250g', category: 'Bebidas', price: 189, tag: 'POPULAR' },
+  { name: 'Organizador de escritorio', category: 'Accesorios', price: 249, tag: null },
+  { name: 'Playera COW-HUB', category: 'Ropa', price: 299, tag: 'NUEVO' },
+  { name: 'Set de post-its y marcadores', category: 'Accesorios', price: 149, tag: null },
+];
+for (const p of products) {
+  await db.collection('store').doc('catalog').collection('products').add({
+    name: p.name, category: p.category, price: p.price,
+    old_price: null, image_url: '', tag: p.tag,
+  });
+}
+console.log('✓ pushLogs + products');
+
+// ═══ dailyStats (14 días) + forecasts ═══
+for (const b of branches) {
+  const weekdayCurve = {};
+  for (let d = 14; d >= 1; d--) {
+    const date = new Date(now - d * DAY);
+    const dateStr = localDate(date);
+    const curve = trafficCurve(d * 7 + branches.indexOf(b));
+    const total = curve.reduce((s, v) => s + v, 0);
+    const granted = Math.round(total * 0.94);
+    await db.collection('dailyStats').doc(`${b.id}_${dateStr}`).set({
+      branch_id: b.id, date: dateStr, total, granted, denied: total - granted,
+      by_method: { qr: Math.round(granted * 0.65), usb: Math.round(granted * 0.35) },
+      by_plan: {
+        classic: Math.round(granted * 0.3), plus: Math.round(granted * 0.25),
+        black: Math.round(granted * 0.2), select: Math.round(granted * 0.15),
+        cowork: Math.round(granted * 0.1),
+      },
+      by_hour: curve,
+      peak_capacity: Math.max(...curve),
+      unique_members: Math.round(granted * 0.6),
+    });
+    const wd = String(((date.getDay() + 6) % 7) + 1);
+    const key = `${b.id}_${wd}`;
+    const prev = weekdayCurve[key] ?? new Array(24).fill(0);
+    weekdayCurve[key] = curve.map((v, h) => prev[h] * 0.5 + v * 0.5);
+  }
+  const byWeekday = {};
+  for (let wd = 1; wd <= 7; wd++) {
+    byWeekday[String(wd)] =
+      weekdayCurve[`${b.id}_${wd}`] ?? trafficCurve(wd + branches.indexOf(b));
+  }
+  await db.collection('forecasts').doc(b.id).set({
+    by_weekday: byWeekday, sample_days: 14,
+    updated_at: FieldValue.serverTimestamp(),
+  });
+}
+console.log('✓ dailyStats (14d × 4 sedes) + forecasts');
+
+console.log('\nListo. Accesos demo (password demo1234):');
+console.log('  admin@cowhub.mx      → ADMIN');
+console.log('  gerente@cowhub.mx    → MANAGER (Select)');
+console.log('  recepcion@cowhub.mx  → RECEPTIONIST (Select)');
+console.log('  miembro1..5@cowhub.mx  → miembros');
+process.exit(0);

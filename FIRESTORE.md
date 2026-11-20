@@ -1,0 +1,754 @@
+# Esquema de datos — Firestore
+
+Fuente de verdad del modelo de datos para el sistema de coworking.
+**Un negocio (marca) con N sucursales.** La marca no es una dimensión de los
+datos: es configuración del despliegue (`/config/brand`). Un segundo negocio =
+otro proyecto Firebase, no otro tenant.
+
+---
+
+## Convenciones
+
+- **IDs canónicos**: toda referencia entre documentos guarda el `id` del
+  documento destino (`plan_id`, `host_id`, `branch_id`, `member_id`…).
+  Nunca se referencia por nombre — renombrar no rompe nada.
+- **Snapshots / etiquetas denormalizadas**: los nombres se duplican solo para
+  display o historia (`member_name`, `plan`, `host`, `membership_type`).
+  Nunca son la relación; no requieren consistencia estricta.
+- **`branch_id: null`** en contenido = aplica a todas las sedes.
+- **`plan_ids: ['ALL']`** en cupones = todos los planes.
+- Timestamps en `snake_case` (`created_at`, `check_in_at`) — convención
+  Firestore, igual que los modelos Flutter.
+- **Campos monetarios** en pesos MXN (`price`, `amount`), `currency: 'mxn'`.
+  La conversión a centavos (×100) se hace solo al llamar a Stripe.
+- Escrituras sensibles (pagos, check-ins, vigencias, contadores) las hacen
+  **solo Cloud Functions** — los clientes nunca las escriben directo.
+
+## Mapa de colecciones
+
+```
+/config/brand                    configuración white-label (1 doc)
+/config/ads                      precios de venta directa de publicidad (1 doc)
+/config/features                 módulos y features IA del negocio (1 doc)
+
+/branches/{branchId}             sedes
+/plans/{planId}                  planes de membresía (catálogo + Stripe)
+/hosts/{hostId}            anfitriones
+/activities/{activityId}               espacios (definición + overrides por sede)
+
+/users/{userId}                  miembros
+/users/{userId}/coupons/{id}     cupones generados del miembro (rules: solo lectura)
+/users/{userId}/churn_features/{d} histórico diario de features de ML
+/staff/{uid}                     personal (rol + sede)
+
+/checkins/{checkinId}            entradas del día (TTL — se borran solas)
+/bookings/{bookingId}            reservas de espacio por ocurrencia (activity_date)
+/bookings_archive/{id}            reservas archivadas por el close-day (solo staff)
+/dailyStats/{statId}             agregado diario por sede (historia de reportes)
+/forecasts/{branchId}            ocupación típico por hora/día de semana (app)
+/payments/{paymentId}            pagos (solo functions escribe)
+/webhookEvents/{eventId}         idempotencia de webhooks Stripe
+/usage_analytics/{month_feature} registro de consumo de IA y features para facturación
+
+/promotions/{promotionId}        banners + cupones CMS
+/sponsorAds/{adId}               anuncios de aliados + métricas
+/adOrders/{orderId}              compras self-serve de anuncios (Stripe + aprobación)
+/adEvents/{id}                    dedupe 1 evento/miembro/anuncio/día
+/adStats/{adId}_{fecha}           serie diaria única por anuncio (reportes)
+/pushLogs/{logId}                notificaciones push enviadas
+/store/products/{productId}      tienda de la app
+```
+
+---
+
+## Colecciones
+
+### `/config/brand` — configuración del negocio
+
+Un solo documento. Lo leen la app y el B2B al arrancar para tematizarse.
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `name` | string | Nombre comercial |
+| `logo_url` | string | |
+| `colors` | map | `{ primary, accent, background }` |
+| `timezone` | string | `America/Mexico_City` |
+| `currency` | string | `MXN` |
+| `socials` | map | `{ instagram, facebook, … }` |
+
+Escritura: solo ADMIN.
+
+---
+
+### `/branches/{branchId}` — sedes
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `name` | string | |
+| `image_url` | string | |
+| `address` | string | |
+| `max_capacity` | number | Ocupación máximo |
+| `current_capacity` | number | **Contador** — solo server (API/functions) |
+| `capacity_adjusted_at` | timestamp | Sello del último ajuste manual de ocupación |
+| `capacity_adjusted_by` | string | Email/uid del staff que ajustó |
+| `status` | string | `OPEN` \| `CLOSED` |
+| `open_minutes` | number | Minutos desde 00:00 |
+| `close_minutes` | number | |
+| `lat` / `lng` | number | Para mapa de la app |
+
+Lectura: todos los autenticados. Escritura: ADMIN (cualquier sede),
+MANAGER (solo la suya, sin tocar `max_capacity`/`current_capacity`).
+`current_capacity` solo se escribe vía API: check-in/out, auto-checkout,
+cierre de día y `POST /api/branches/{id}/adjust` (delta o valor absoluto,
+clamp `[0, max]`, deja sello `capacity_adjusted_*`).
+
+---
+
+### `/plans/{planId}` — planes de membresía
+
+El plan **es** la membresía: nombre, precio, beneficios y alcance.
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `name` | string | Display — no es referencia |
+| `price` | number | Centavos / mes |
+| `features` | string[] | Beneficios |
+| `highlight` | bool | Badge PREMIUM |
+| `all_branches` | bool | Acceso multi-sede |
+| `stripe_product_id` | string | Catálogo Stripe |
+| `stripe_price_id` | string | Price 1:1 con este plan |
+| `active` | bool | Soft-delete: no se borran planes con miembros |
+
+Lectura: todos. Escritura: solo ADMIN (gerente ni crea ni edita).
+
+---
+
+### `/users/{userId}` — miembros
+
+El `userId` es el UID de Firebase Auth del miembro — o un doc id aleatorio
+para miembros creados en recepción aún no reclamados (su `auth_uid` se
+escribe al reclamar con `POST /api/members/claim`, número + `claim_pin`
+que llegó por correo).
+
+| Campo | Tipo | Quién escribe | Notas |
+|---|---|---|---|
+| `branch_id` | string | staff | Sede de registro → `branches/{id}` |
+| `name` | string | miembro/staff | Display |
+| `photo_url` | string | miembro/staff | Legacy — la app usa `avatar` |
+| `avatar` | string | miembro | Id de `memberAvatarCatalog` (app) — avatar prediseñado |
+| `member_number` | string | functions | `CF-XXXXX` — lector USB |
+| `qr_code` | string | functions | Contenido del QR firmado |
+| `membership_status` | string | functions | `ACTIVE` \| `EXPIRED` |
+| `membership_plan_id` | string | functions | **Canónico** → `plans/{id}` |
+| `membership_until` | timestamp | functions | Vigencia — solo cambia por pago |
+| `first_name` | string | miembro/staff | |
+| `middle_name` | string | miembro/staff | |
+| `paternal_last_name` | string | miembro/staff | |
+| `maternal_last_name` | string | miembro/staff | |
+| `sex` | string | miembro/staff | |
+| `birth_date` | timestamp | miembro/staff | |
+| `phone` | string | miembro/staff | |
+| `contact_email` | string | functions | Correo capturado en recepción — recibe el PIN; **independiente** del `email` de login |
+| `email` | string | functions | Email de la cuenta de login (Google/Apple) — se escribe al reclamar |
+| `claim_pin` | string | functions | PIN de activación de 6 díg — **se borra al reclamar** (single-use) |
+| `claim_attempts` | int | functions | Fallos consecutivos de PIN — a los **3** se bloquea 15 min |
+| `claim_locked_until` | timestamp | functions | Fin del lockout de claim — se borra al reclamar |
+| `id_number` | string | staff | Identificación |
+| `stripe_customer_id` | string | functions | Customer de Stripe (lazy) |
+| `last_checkin_at` | timestamp | functions | Última entrada — la app la muestra |
+| `active_checkin_id` | string \| null | functions | Check-in abierto — evita doble entrada |
+| `active_checkin_branch` | string \| null | functions | Sede del check-in abierto |
+| `weekly_goal` | int | miembro | Meta de visitas por semana (default 4) — editable desde la app (whitelist en rules) |
+| `points` | int | functions | Balance de puntos de lealtad — `+50` al cumplir la meta semanal, se descuenta al canjear |
+| `points_earned` | int | functions | Acumulado histórico de puntos emitidos (KPI `/api/rewards/stats`) |
+| `goal_awarded_week` | string | functions | Lunes `yyyy-mm-dd` de la semana ya premiada — evita doble premio |
+| `goal_awarded_at` | timestamp | functions | Cuándo se otorgó el último premio |
+| `goal_streak` | int | functions | Semanas consecutivas cumpliendo la meta — se resetea si falla una semana |
+| `goal_streak_week` | string | functions | Lunes de la última semana de racha — para detectar si continúa |
+| `created_at` | timestamp | functions | |
+
+Lectura: el miembro (su doc), staff según sede. Escritura de perfil: el miembro
+(campos whitelist) o staff según rol. Campos de membresía: solo functions.
+
+#### `/users/{userId}/coupons/{couponId}`
+
+Cupones que el miembro genera desde un anuncio de aliado.
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `ad_id` | string | → `sponsorAds/{id}` origen |
+| `code` | string | Código canjeable |
+| `plan_ids` | string[] | Restricción de planes heredada |
+| `expires_at` | timestamp | |
+
+#### `/users/{userId}/visits/{yyyy-mm-dd}` — lealtad
+
+Historial durable de asistencias (los `checkins` se borran en el cierre
+de día — este es el registro que sobrevive). Doc id = fecha CDMX → un
+doc por día = dedupe gratis. Lo escribe `checkin.post` vía
+`recordVisitAndReward` (transacción) solo cuando el check-in es
+concedido. La app lo lee para la racha semanal y objetivos.
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `branch_id` | string | Sede de la visita |
+| `checkin_id` | string \| null | → `checkins/{id}` (null en seed) |
+| `at` | timestamp | Hora de la visita |
+
+#### `/users/{userId}/pointsHistory/{docId}` — lealtad
+
+Historial de movimientos de puntos — cada ganancia o gasto queda
+registrado para transparencia. Lo escribe `recordPointsHistory` en
+transacción junto con el cambio de `points`.
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `type` | string | `weekly_goal` / `streak_bonus` / `redeem` / `manual_adjustment` / `referral` |
+| `delta` | int | Cambio (+/-) en puntos |
+| `balance` | int | Saldo resultante después del movimiento |
+| `description` | string | Texto legible del movimiento |
+| `ref_id` | string \| null | Referencia opcional (redemptionId, etc.) |
+| `created_at` | timestamp | |
+
+#### `/users/{userId}/redemptions/{redemptionId}` — lealtad
+
+Canjes de recompensas — los crea `POST /api/rewards/redeem` en
+transacción con la deducción de `points`. El miembro muestra `code` en
+recepción; staff lo marca `used` (pendiente UI B2B).
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `reward_id` | string | → `rewards/{id}` |
+| `reward_name` | string | Snapshot para display |
+| `points_spent` | int | Costo al momento del canje |
+| `member_id` | string | → `users/{id}` del miembro |
+| `member_name` | string | Snapshot display (B2B lo lista) |
+| `branch_id` | string | Sede del miembro — scope del listado staff |
+| `code` | string | `RWR-XXXXXX` — se muestra en recepción |
+| `status` | string | `active` \| `used` \| `expired` |
+| `created_at` | timestamp | |
+| `expires_at` | timestamp | +30 días del canje |
+| `used_at` | timestamp \| null | |
+| `used_by` | string \| null | uid de staff que validó el código |
+
+---
+
+### `/staff/{uid}` — personal
+
+El `uid` es el UID de Firebase Auth. La existencia del doc define que es staff.
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `name` | string | |
+| `role` | string | `ADMIN` \| `MANAGER` \| `RECEPTIONIST` |
+| `branch_id` | string \| null | `null` solo para ADMIN global |
+| `active` | bool | |
+
+Escritura: solo ADMIN. Las security rules leen este doc para decidir permisos.
+
+---
+
+### `/hosts/{hostId}` — anfitriones
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `branch_ids` | string[] | Sedes donde trabaja → `branches/{id}` |
+| `name` | string | |
+| `specialty` | string | |
+| `photo_url` | string | Legacy — la app usa `avatar` |
+| `avatar` | string | Id del catálogo `HOST_AVATAR_IDS` → `public/avatars/hosts/{id}.svg` |
+| `shift` | string | `MAÑANA` \| `TARDE` \| `NOCHE` — campo local |
+| `is_on_duty` | bool | Campo local |
+| `active` | bool | |
+
+Lectura: todos. Escritura: ADMIN todo; MANAGER crea en su sede y solo edita
+`shift`/`is_on_duty`/`branch_ids` de integrantes asignados a su sede.
+
+---
+
+### `/activities/{activityId}` — espacios
+
+Definición global + overrides por sede en `branch_times`.
+
+| Campo | Tipo | Quién edita | Notas |
+|---|---|---|---|
+| `name` | string | ADMIN | |
+| `branch_ids` | string[] | ADMIN | Sedes donde se imparte |
+| `host_id` | string | ADMIN | **Canónico** → `hosts/{id}` |
+| `host` | string | ADMIN | Etiqueta denormalizada (display) |
+| `room` | string | ADMIN | Sala base |
+| `start_minutes` / `end_minutes` | number | ADMIN | Horario base |
+| `capacity` | number | ADMIN | |
+| `booked` | number | functions | Inscritos de HOY total — suma de sedes (compat) |
+| `booked_by_date` | map | functions | Cupo por ocurrencia **y sede**: `{ 'YYYY-MM-DD': { <branchId>: n } }`. Se poda al reservar y en close-day |
+| `branch_times` | map | MANAGER (su clave) | `{ <branchId>: { start_minutes, end_minutes, room } }` |
+
+La reserva es por **ocurrencia** (fecha CDMX), no por espacio en abstracto:
+`POST /api/activities/{id}/book` recibe `{ date, branchId }`, valida vigencia
+(no pasada, ≤8 días, si es hoy la espacio no debe haber terminado según
+`branch_times` de esa sede) y cupo **en transacción por sede** — dos
+reservas simultáneas no rebasan `capacity` de esa sede. `DELETE` toma
+`?date=` y decrementa la llave de la sede registrada en la reserva.
+
+### `/bookings/{bookingId}` — reservas de espacio
+
+Escritura solo vía API (functions); el miembro lee las suyas
+(`auth_uid == uid`, stream acotado a `activity_date >= hoy`). Las reservas
+con `activity_date < hoy` se archivan a `/bookings_archive` en el close-day
+(`archivePastBookings`, lotes de 400) — ahí quedan como historial para
+reportes; lectura solo staff.
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `activity_id` | string | → `activities/{id}` |
+| `activity_date` | string | `YYYY-MM-DD` CDMX — la ocurrencia reservada |
+| `user_id` / `auth_uid` | string | Miembro (doc id + auth uid) |
+| `member_name` | string | Snapshot para roster |
+| `branch_id` | string | Sede donde se toma la espacio |
+| `status` | string | `confirmed` / `cancelled` |
+| `created_at` / `cancelled_at` | timestamp | |
+
+El gerente solo puede escribir su propia clave dentro de `branch_times` —
+nada de campos globales ni otras sedes (se fuerza en reglas).
+
+---
+
+### `/checkins/{checkinId}` — entradas del día (efímeras)
+
+**Los check-ins son del día y desaparecen.** Dos mecanismos:
+
+- `expires_at` → **Firestore TTL policy** borra el doc automáticamente al
+  expirar (fin del día + margen). Es la red de seguridad.
+- Function programada **`closeDay`** (al cierre de cada sede): agrega el día
+  en `/dailyStats`, resetea `current_capacity` a 0 y barre los check-ins
+  que hayan quedado. La historia vive en `dailyStats`, no aquí.
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `user_id` | string \| null | → `users/{id}`; **null** en check-ins de agregador |
+| `provider` | string | `member` (default) \| `wellhub` \| `totalpass` |
+| `external_id` | string \| null | Id del visitante en el agregador (dedupe diario) |
+| `branch_id` | string | → `branches/{id}` |
+| `member_name` | string | Snapshot display (nombre del miembro o del visitante) |
+| `membership_type` | string | Snapshot del plan — en partners, tier del agregador |
+| `membership_plan_id` | string | **Canónico** — analítica por plan |
+| `method` | string | `qr` \| `usb` \| `manual` \| `partner` |
+| `granted` | bool | |
+| `reason` | string | Motivo de rechazo (si aplica) |
+| `check_in_at` | timestamp | Server timestamp |
+| `checked_out` | bool | |
+| `checked_out_at` | timestamp \| null | |
+| `membership_alert` | string | `GREEN` \| `YELLOW` \| `RED` |
+| `expires_at` | timestamp | **TTL** — cierre de sede + margen |
+
+Queries: `branch_id + check_in_at` (lista del día en recepción);
+`provider + external_id + check_in_at + granted` (dedupe de agregador).
+No hay historial por miembro aquí — el miembro ve su `last_checkin_at`.
+
+**Agregadores externos (Wellhub/TotalPass)** — sin uso en COW-HUB; `POST /api/partners/checkin` valida
+el token del día contra la API del proveedor (`server/utils/partners.ts`
+— `PARTNER_VALIDATION=mock` en dev, credenciales del convenio en prod:
+`WELLHUB_API_KEY` / `TOTALPASS_API_KEY`). El visitante no tiene doc en
+`/users`; el pago es por liquidación del agregador, no por `/payments`.
+
+### `/dailyStats/{statId}` — agregado diario por sede
+
+`statId = "{branchId}_{yyyy-mm-dd}"` — un doc por sede por día.
+Lo escribe `closeDay`; **es la fuente de reportes históricos**.
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `branch_id` | string | → `branches/{id}` |
+| `date` | string | `yyyy-mm-dd` |
+| `total` / `granted` / `denied` | number | |
+| `by_method` | map | `{ qr: n, usb: n, manual: n }` |
+| `by_plan` | map | `{ <planId>: n }` — reporte por membresía |
+| `by_hour` | number[] | 24 entradas — gráfica de tráfico |
+| `peak_capacity` | number | Pico de ocupación del día |
+| `unique_members` | number | Miembros distintos |
+
+Escritura: solo functions. Lectura: staff según sede.
+
+### `/forecasts/{branchId}` — pronóstico de ocupación (app)
+
+Un doc por sede. Lo actualiza `closeDay` cada noche con el `by_hour` del
+día que cerró, usando promedio exponencial por día de semana:
+
+```
+by_weekday[weekday][h] = 0.8 * anterior + 0.2 * hoy
+```
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `by_weekday` | map | `{ 1: [24], …, 7: [24] }` lunes–domingo, valor por hora |
+| `sample_days` | number | Días que alimentan el promedio |
+| `updated_at` | timestamp | |
+
+La app lee **1 doc** para dibujar "ocupación típico por hora" — la consulta
+más barata posible. Separado por día de semana porque lunes ≠ sábado.
+Sin datos aún → la app muestra "sin pronóstico" hasta `sample_days > 0`.
+
+Escritura: solo functions. Lectura: todos los autenticados.
+
+---
+
+### `/payments/{paymentId}` — pagos
+
+**Append-only: solo Cloud Functions escribe.** Dos orígenes:
+
+- `provider: 'stripe'` → webhook `payment_intent.succeeded` (app del miembro).
+- `provider: 'manual'` → callable `registerManualPayment` (recepción B2B).
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `member_id` | string | → `users/{id}` **canónico** |
+| `member_name` / `member_number` | string | Snapshots para reportes |
+| `branch_id` | string | → `branches/{id}` |
+| `plan_id` | string | → `plans/{id}` **canónico** |
+| `plan` | string | Etiqueta histórica del cobro |
+| `amount` | number | Centavos |
+| `currency` | string | `mxn` |
+| `provider` | string | `stripe` \| `manual` |
+| `method` | string | `card` \| `cash` \| `transfer` \| `terminal` |
+| `transaction_id` | string | Folio manual (stripe usa payment_intent_id) |
+| `stripe_payment_intent_id` | string \| null | |
+| `stripe_charge_id` | string \| null | |
+| `receipt_url` | string \| null | |
+| `status` | string | `APPROVED` \| `DECLINED` \| `PENDING` \| `REQUIRES_ACTION` \| `REFUNDED` |
+| `failure_reason` | string \| null | |
+| `created_at` | timestamp | Server timestamp |
+| `created_by` | string | `member_app` \| `reception` |
+
+Queries: `branch_id + created_at` (reportes), `member_id + created_at`
+(historial del miembro), `plan_id` (recaudado por plan).
+
+**Cobro manual** (recepción): efectivo/transferencia/terminal física del negocio.
+La callable valida plan + miembro y extiende `membership_until` +30 días.
+
+**Cobro Stripe** (app): `createPaymentIntent` → SDK confirma → webhook crea
+el doc y extiende `membership_until`. Sin suscripciones en fase 1.
+
+---
+
+### `/webhookEvents/{eventId}` — idempotencia Stripe
+
+| Campo | Tipo |
+|---|---|
+| `type` | string (`payment_intent.succeeded`, …) |
+| `processed_at` | timestamp |
+
+Stripe reintenta webhooks: si el `eventId` ya existe, se ignora.
+Solo functions accede — reglas niegan todo a clientes.
+
+---
+
+### `/promotions/{promotionId}` — banners + cupones CMS
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `type` | string | `banner` \| `coupon` |
+| `branch_id` | string \| null | `null` = todas las sedes |
+| `title` / `subtitle` / `description` | string | |
+| `badge` | string | |
+| `image_url` | string | Banner |
+| `code` | string | Cupón |
+| `plan_ids` | string[] | Cupón: `['ALL']` o ids de `plans` |
+| `created_at` / `expires_at` | timestamp | |
+
+Escritura: solo ADMIN.
+
+---
+
+### `/sponsorAds/{adId}` — anuncios de aliados
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `advertiser` | string | |
+| `title` / `subtitle` / `badge` | string | |
+| `brand_color` | string | Hex |
+| `image_url` | string | |
+| `cta_label` | string | |
+| `branch_id` | string \| null | `null` = global |
+| `placement` | string | `carousel` (Home + Promociones + tope de Aliados, cupo 5) \| `list` (solo Aliados aleatorio). `both`/sin campo → `carousel` |
+| `status` | string | `PENDING` \| `ACTIVE` \| `PAUSED` — PENDING = comprado por self-serve, esperando aprobación (la app solo consulta ACTIVE) |
+| `ends_at` | timestamp \| null | `null` en PENDING — la vigencia arranca al aprobarse |
+| `impressions` / `taps` | number | **Contadores** — solo functions (increment) |
+| `description` / `address` / `phone` | string | Perfil del aliado |
+| `lat` / `lng` | number | |
+| `socials` | map | `{ instagram, facebook, tiktok, website, whatsapp, other_label, other_url }` — `other_*` es el link libre del anunciante (elige la red) |
+| `photos` | string[] | Galería |
+| `order_id` | string \| null | → `adOrders/{id}` si vino de self-serve |
+| `created_at` | timestamp | |
+
+Escritura: solo ADMIN. Contadores: functions vía `FieldValue.increment()`.
+
+---
+
+### `/adEvents/{eventId}` — dedupe de métricas publicitarias
+
+Un doc por (anuncio, miembro, evento, día): id `"{adId}_{uid}_{yyyy-mm-dd}_{evento}"`.
+`POST /api/ads/track` intenta `create()` — si ya existe, se omite el
+incremento de `sponsorAds.impressions/taps`. Así un miembro no puede
+inflar métricas repitiendo el evento el mismo día. Escritura solo API
+(reglas: deny por default — no hay match explícito). Sin TTL por ahora;
+si crece, barrer docs >90 días en close-day.
+
+| Campo | Tipo |
+|---|---|
+| `ad_id` | string |
+| `uid` | string |
+| `event` | `impression` \| `tap` |
+| `date` | string `yyyy-mm-dd` CDMX |
+| `created_at` | timestamp |
+
+### `/adStats/{adId}_{yyyy-mm-dd}` — serie diaria por anuncio
+
+Se incrementa en `track.post` SOLO cuando el evento pasó el dedupe
+(`adEvents` recién creado) → conteo de eventos únicos reales por día.
+Lo lee `GET /api/ads/{id}/stats` (admin/gerente) para la gráfica de 30
+días en `/publicidad/[id]`.
+
+| Campo | Tipo |
+|---|---|
+| `ad_id` | string |
+| `date` | string `yyyy-mm-dd` CDMX |
+| `impressions` | int |
+| `taps` | int |
+
+### `/config/ads` — venta directa de publicidad
+
+Un solo documento — lo edita el admin en `/publicidad` → "Venta directa".
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `enabled` | bool | Apagado → `/anuncia` muestra "no disponible" |
+| `slots` | map | `{ carousel: {enabled, price_per_week}, list: {…} }` — precio MXN por semana, cobertura global. `carousel` = premium (carrusel + tope de Aliados, cupo 5); `list` = solo directorio aleatorio |
+| `push` | map | `{enabled, count, price}` — paquete de pushes extra (1/semana, cobro único). Toda compra ya incluye 1 push gratis al aprobarse |
+| `notify` | map | `{ global: string[], by_branch: {branchId: email} }` — avisos de solicitud pagada: `global` siempre se notifica; como toda orden es global, **todos** los `by_branch` reciben aviso (dedupe). Los ADMIN de staff siempre reciben aviso además de estos |
+
+### `/adOrders/{orderId}` — compras self-serve de anuncios
+
+El flujo: el anunciante llena `/anuncia` (público) → `POST /api/ads/orders`
+crea la orden `AWAITING_PAYMENT` + Stripe Checkout Session → webhook
+(`checkout.session.completed`, con `payment_intent.succeeded` de respaldo)
+crea el `sponsorAds` **PENDING** y pasa la orden a `PENDING_APPROVAL` →
+el admin aprueba (`ends_at = hoy + weeks`, anuncio ACTIVE) o rechaza
+(reembolso Stripe + se borra el creativo).
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `business_name` / `contact_name` / `email` / `phone` | string | Contacto del anunciante |
+| `title` / `subtitle` / `badge` / `image_url` / `cta_label` / `description` / `address` / `socials` / `photos` / `brand_color` | | Creativo — se copia al sponsorAd al pagar |
+| `lat` / `lng` | number \| null | Pin que el anunciante confirmó en el mapa de `/anuncia`; null → el webhook geocodifica `address` como respaldo |
+| `branch_id` | string \| null | Siempre `null` — la segmentación por sede se eliminó (todo anuncio es global) |
+| `placement` | string | `carousel` \| `list` (docs viejos con `both` se leen como `carousel`) |
+| `weeks` | int | 1–4 (tope pensado para que el paquete de pushes semanales quepa en la campaña) |
+| `amount` / `currency` | number / string | Calculado server-side (precio×semanas + push si aplica) |
+| `wants_push` / `push_pack` | bool / int | Compró el paquete y cuántos pushes extra trae (1/semana desde la aprobación — el push incluido sale igual) |
+| `push_log_ids` / `push_sent_at` / `push_error` | string[] / timestamp / string | → `pushLogs/{ids}` (el inmediato + los programados), cuándo salió el incluido o por qué falló |
+| `status` | string | `AWAITING_PAYMENT` \| `PENDING_APPROVAL` \| `APPROVED` \| `REJECTED` \| `EXPIRED` (checkout expirado) |
+| `stripe_session_id` / `stripe_payment_intent_id` | string | Checkout Session / PI (para el reembolso) |
+| `sponsor_ad_id` | string \| null | → `sponsorAds/{id}` tras el pago |
+| `rejection_reason` | string \| null | Opcional — va en el correo al anunciante |
+| `paid_at` / `reviewed_at` / `reviewed_by` | timestamp / string | |
+| `report_sent_at` | timestamp \| null | Correo de cierre de campaña enviado al anunciante — lo marca el cron `ads-report` (diario): barre `sponsorAds` ACTIVE con `ends_at` vencida → los pasa a `EXPIRED` y envía el reporte (impresiones/taps/CTR de `adStats` + pushes SENT de `push_log_ids` + CTA de renovación a `/anuncia`). Reenvío manual: `POST /api/ads/orders/{id}/report` (admin). |
+
+### `/auditLogs/{id}` — evidencia de cambios excepcionales en ads comprados
+
+Un anuncio con `order_id` fue **pagado** por un anunciante: degradar su
+superficie (placement/pausa/borrado) requiere razón obligatoria y queda
+aquí. Escritura solo server (`server/utils/audit.ts`); lectura solo admin.
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `entity` / `entity_id` | string | `sponsorAd` + id del anuncio |
+| `order_id` | string \| null | → `adOrders/{id}` |
+| `advertiser` | string | Snapshot para display |
+| `action` | string | `PLACEMENT_DOWNGRADE` \| `PLACEMENT_UPGRADE` \| `PAUSE` \| `DELETE` \| `REACTIVATE_EXPIRED` |
+| `actor_uid` / `actor_email` | string | Staff que forzó o autorizó el cambio |
+| `reason` | string | Obligatoria en downgrade/pausa/delete/reactivación cortesía |
+| `changes` | map | `{campo: {before, after}}` |
+| `payment` | map \| null | Datos del cobro en mostrador si fue reactivación pagada (`amount`, `method`, `folio`) |
+| `snapshot` | map \| null | Estado del anuncio (sin imágenes) — solo DELETE |
+| `created_at` | timestamp | |
+| `created_at` | timestamp | |
+
+Escritura: solo API (rules: lectura staff). Requiere en el endpoint del
+webhook de Stripe suscrito: `checkout.session.completed` (y `expired`
+opcional). Notificaciones por SMTP a admins + anunciante.
+
+### `/pushLogs/{logId}` — notificaciones
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `title` / `body` | string | |
+| `audience` | string | `ALL` \| `BRANCH` \| `EXPIRED` |
+| `branch_id` | string \| null | Si `audience == 'BRANCH'` |
+| `kind` | string | `BRAND` \| `SPONSOR` |
+| `status` | string | `DRAFT` \| `SENDING` \| `SENT` \| `FAILED` |
+| `scheduled_at` | timestamp \| null | |
+| `sent` | number | Destinatarios alcanzados |
+| `sponsor_ad_id` / `ad_order_id` | string \| null | Solo en pushes del add-on pagado — trazabilidad al anuncio/orden |
+| `created_at` | timestamp | |
+
+Escritura: solo ADMIN (y server — el add-on push se crea al aprobar una
+orden pagada).
+
+---
+
+### `/store/catalog/products/{productId}` — tienda
+
+| Campo | Tipo |
+|---|---|
+| `name` | string |
+| `category` | string |
+| `price` | number |
+| `old_price` | number \| null |
+| `image_url` | string |
+| `tag` | string |
+
+Escritura: solo ADMIN.
+
+---
+
+### `/rewards/{rewardId}` — catálogo de lealtad
+
+Recompensas canjeables con puntos. Catálogo fijo sembrado por seed
+(`scripts/seed.mjs`) — administración B2B pendiente.
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `name` | string | |
+| `description` | string | |
+| `points_cost` | int | |
+| `icon` | string | Id de icono — la app lo mapea a Material |
+| `image_url` | string | Vacío por ahora |
+| `active` | bool | La app solo lee `active == true` |
+| `stock` | int \| null | Stock limitado — null = ilimitado |
+| `redeemed_count` | int | Canjes realizados — se incrementa en cada redeem |
+| `created_at` | timestamp | |
+
+Escritura: ADMIN (o Admin SDK). Lectura: cualquier usuario firmado.
+
+---
+
+### `/conversations/{conversationId}` — soporte / chat
+
+Conversaciones de ayuda entre miembros y staff. Se borran al resolverse
+(historial solo de activas).
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `member_id` | string | → `users/{id}` |
+| `member_name` | string | Snapshot display |
+| `branch_id` | string | Sede del miembro — staff ve las de su sede |
+| `status` | string | `open` \| `resolved` |
+| `created_at` | timestamp | |
+| `last_message_at` | timestamp | Ordenamiento |
+| `last_message_preview` | string | Primeros 100 chars del último mensaje |
+| `unread_member` | number | Mensajes sin leer por el miembro |
+| `unread_staff` | number | Mensajes sin leer por staff |
+
+Lectura: el miembro (su conversación), staff según sede. Escritura: API.
+
+#### `/conversations/{id}/messages/{msgId}` — mensajes
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `sender` | string | `member` \| `staff` |
+| `sender_name` | string | |
+| `text` | string | |
+| `created_at` | timestamp | |
+| `read` | bool | |
+
+Lectura/escritura: API valida permisos.
+
+---
+
+## Relaciones (canónicas)
+
+```
+users.branch_id            → branches.id
+users.membership_plan_id   → plans.id
+staff.branch_id            → branches.id        (null = admin global)
+hosts.branch_ids[]      → branches.id
+activities.branch_ids[]       → branches.id
+activities.branch_times{}     → keyed by branches.id
+activities.host_id           → hosts.id
+checkins.user_id           → users.id
+checkins.branch_id         → branches.id
+checkins.membership_plan_id→ plans.id
+payments.member_id         → users.id
+payments.branch_id         → branches.id
+payments.plan_id           → plans.id
+plans.stripe_price_id      → Stripe Price
+users.stripe_customer_id   → Stripe Customer
+users/{id}/coupons.ad_id   → sponsorAds.id
+users/{id}/visits.{date}   → checkins.id (checkin_id) + branches.id
+users/{id}/redemptions.reward_id → rewards.id
+promotions.branch_id       → branches.id | null
+promotions.plan_ids[]      → plans.id | 'ALL'
+sponsorAds.branch_id       → branches.id | null
+pushLogs.branch_id         → branches.id | null
+```
+
+## Quién escribe qué
+
+| Escritor | Colecciones / campos |
+|---|---|
+| **Solo Cloud Functions** | `payments`, `checkins`, `webhookEvents`; `users.membership_*`, `member_number`, `qr_code`, `stripe_customer_id`, `claim_pin`, `contact_email`, `points`, `goal_awarded_*`; `users/{id}/visits`, `users/{id}/redemptions`; `branches.current_capacity`; `sponsorAds.impressions/taps`; `activities.booked` |
+| **ADMIN** | `config`, `plans`, `promotions`, `sponsorAds`, `pushLogs`, `store/products`, `staff`, `branches` (todas), `activities` (global), `hosts` (todo) |
+| **MANAGER** (su sede) | `branches[suSede]`, `users` (edita los de su sede), `hosts` (`shift`, `is_on_duty`, `branch_ids`), `activities.branch_times[suSede]` |
+| **RECEPTIONIST** (su sede) | `users` (crear en su sede); operación de check-in/pagos vía callables |
+| **Miembro (app)** | su `users/{uid}` (campos de perfil + `weekly_goal`), sus `coupons` |
+
+## Flujos escritos por functions (implementadas en `functions/src/`)
+
+- **`checkIn`** (callable, staff en su sede): valida membresía + gracia
+  3 días + ocupación + `active_checkin_id` (anti doble entrada) → crea checkin
+  con `expires_at` TTL + incrementa `current_capacity` + marca
+  `last_checkin_at`. Intentos negados también quedan registrados.
+- **`checkOut`** (callable, staff en su sede): cierra el check-in,
+  decrementa ocupación y libera `active_checkin_id`.
+- **`autoCheckoutCron`** (cada 15 min): libera check-ins >90 min sin salida.
+- **`createPaymentIntent`** (callable, miembro): crea/recupera Customer →
+  PaymentIntent `card`-only en centavos → devuelve `client_secret`.
+- **`stripeWebhook`** (HTTP): firma verificada → idempotencia por
+  `/webhookEvents/{eventId}` → `payment_intent.succeeded` crea `payments`
+  + extiende `membership_until` 30 días; `payment_failed` registra
+  DECLINED; `charge.refunded` marca REFUNDED.
+- **`registerManualPayment`** (callable, staff): crea `payments`
+  (APPROVED, provider `manual`) + `membership_until += 30d`.
+- **`closeDay`** (23:55 `America/Mexico_City`): por sede agrega el día en
+  `/dailyStats` (totales, por método, por plan, por hora, pico de ocupación
+  por sweep de intervalos) → funde `by_hour` en `forecasts.by_weekday`
+  (EMA 0.8/0.2) → resetea `current_capacity` → borra check-ins del día.
+  El TTL de `expires_at` respalda el borrado.
+- **`seedDemo`** (callable): puebla todo el esquema — primera corrida
+  libre (si `config/brand` no existe), después solo ADMIN. Crea usuarios
+  Auth de staff y miembros demo (password `demo1234`).
+
+## Decisiones tomadas
+
+- [x] **Pagos en app: solo tarjeta** (sin OXXO). `PENDING`/`REQUIRES_ACTION`
+      quedan para 3DS; casi nunca se ven.
+- [x] **Gerente scopeado a su sede** — lee y opera solo sus datos, no ve
+      check-ins/pagos de otras sedes.
+- [x] **Reglas con `get(staff)` en MVP** — custom claims (`role`,
+      `branch_id` en el token) cuando haya functions que los mantengan.
+- [x] **Check-ins efímeros** — TTL `expires_at` + `closeDay` agrega en
+      `/dailyStats` y resetea ocupación. Historia = `dailyStats`, no checkins.
+      Motivo: el sistema es comercial (promos/cupones) + ocupación en tiempo
+      real; el historial individual de entradas no aporta y cada reporte
+      pagaría una lectura por doc. `dailyStats` da los mismos reportes a
+      1 doc/día y `users.last_checkin_at` preserva retargeting de
+      inactivos. La trazabilidad individual **por día** se restauró con
+      `users/{id}/visits` (lealtad — 1 doc/miembro/día concedido); lo que
+      sigue sin existir es el detalle de múltiples entradas por día.
+
+## Decisiones pendientes
+
+- [ ] Suscripciones Stripe (cobro recurrente) — fase 2, colección
+      `/subscriptions` aparte sin tocar lo demás.
+- [ ] Métricas de ads por día/dispositivo: contadores simples (actual) vs.
+      subcolección `adEvents` si se necesita desglose.

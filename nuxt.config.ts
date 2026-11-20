@@ -1,0 +1,51 @@
+export default defineNuxtConfig({
+  compatibilityDate: '2025-07-15',
+  devtools: { enabled: false },
+
+  modules: ['@nuxt/ui'],
+
+  /* App dark-only: el color-mode module prioriza localStorage sobre
+     preference y cualquier valor viejo deja los componentes Nuxt UI en
+     light — se desactiva y la clase `dark` va fija en htmlAttrs */
+  ui: { colorMode: false },
+
+  css: ['~/assets/css/main.css'],
+
+  app: {
+    head: {
+      title: 'COW-HUB · Consola B2B',
+      htmlAttrs: { lang: 'es' },
+      link: [
+        { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
+        { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
+        {
+          rel: 'preconnect',
+          href: 'https://fonts.gstatic.com',
+          crossorigin: '',
+        },
+        {
+          rel: 'stylesheet',
+          href: 'https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap',
+        },
+      ],
+    },
+  },
+
+  runtimeConfig: {
+    public: {
+      firebaseConfig: '',
+      /// App Check web (reCAPTCHA Enterprise) — site key de Firebase
+      /// Console → App Check → registrar app web. Vacío = no se activa.
+      recaptchaSiteKey: '',
+      /// Features bajo demanda provisionadas por el desarrollador para este despliegue
+      features: {
+        churnRetention: process.env.AI_CHURN_ENABLED === '1' || process.env.AI_CHURN_ENABLED === 'true',
+      },
+    },
+  },
+
+  typescript: {
+    strict: true,
+    typeCheck: false,
+  },
+});

@@ -1,0 +1,249 @@
+@import "tailwindcss";
+@import "@nuxt/ui";
+
+@theme {
+  /* FlowDesk-inspired dark SaaS palette (default) */
+  --color-sidebar: #0e0e11;
+  --color-base: #141318;
+  --color-surface: #201f26;
+  --color-surface-elevated: #292832;
+  --color-stroke: #2c2b35;
+
+  /* Signature pastel accents */
+  --color-accent: #989de7;
+  --color-pastel-lavender: #989de7;
+  --color-pastel-pink: #ff98cb;
+  --color-pastel-yellow: #ffcf68;
+
+  /* Legacy logo tokens mapped to new pastel triad */
+  --color-logo-indigo: #989de7;
+  --color-logo-violet: #ff98cb;
+  --color-logo-pink: #ffcf68;
+
+  /* Typography colors */
+  --color-text-primary: #ffffff;
+  --color-text-secondary: #d4d3dc;
+  --color-text-muted: #9e9da9;
+  --color-text-dim: #706f7c;
+
+  --font-sans: 'Outfit', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Outfit', ui-sans-serif, system-ui, sans-serif;
+}
+
+@theme static {
+  --color-accent-50: #f4f5fe;
+  --color-accent-100: #e8eafc;
+  --color-accent-200: #d3d6f9;
+  --color-accent-300: #b6bbf2;
+  --color-accent-400: #989de7;
+  --color-accent-500: #989de7;
+  --color-accent-600: #7d82d9;
+  --color-accent-700: #656ac2;
+  --color-accent-800: #50549e;
+  --color-accent-900: #3d4078;
+  --color-accent-950: #222444;
+}
+
+:root,
+html.dark {
+  color-scheme: dark;
+}
+
+/* FlowDesk Light Theme */
+html.light {
+  color-scheme: light;
+  --color-sidebar: #ffffff;
+  --color-base: #f5f5f8;
+  --color-surface: #ffffff;
+  --color-surface-elevated: #ececf2;
+  --color-stroke: #e4e3ec;
+
+  --color-accent: #6c72d9;
+  --color-text-primary: #141318;
+  --color-text-secondary: #373644;
+  --color-text-muted: #646373;
+  --color-text-dim: #8b8a99;
+}
+
+html,
+body,
+#__nuxt {
+  height: 100%;
+}
+
+/* TODO elemento clickeable muestra cursor pointer - botones, links,
+   selects, summaries y controles de formulario. Los deshabilitados
+   muestran not-allowed. */
+button:not(:disabled),
+a[href],
+[role="button"],
+[role="link"],
+[role="tab"],
+[role="menuitem"],
+[role="option"],
+select,
+summary,
+label[for],
+input[type="checkbox"],
+input[type="radio"],
+input[type="range"],
+input[type="color"],
+input[type="file"] {
+  cursor: pointer;
+}
+
+button:disabled,
+[aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-base);
+  color: var(--color-text-primary);
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* Subtle vertical guide lines like FlowDesk canvas */
+.flowdesk-canvas {
+  background-color: var(--color-base);
+  background-image: linear-gradient(
+    to right,
+    rgba(255, 255, 255, 0.045) 1px,
+    transparent 1px
+  );
+  background-size: 25% 100%;
+  background-position: -1px 0;
+}
+
+html.light .flowdesk-canvas {
+  background-image: linear-gradient(
+    to right,
+    rgba(20, 19, 24, 0.055) 1px,
+    transparent 1px
+  );
+}
+
+/* Legibilidad en modo claro para vistas secundarias con clases utilitarias dark */
+html.light .text-white,
+html.light .hover\:text-white:hover {
+  color: var(--color-text-primary);
+}
+html.light .bg-accent.text-white,
+html.light .bg-red-500.text-white,
+html.light .bg-emerald-500.text-white,
+html.light .bg-sky-500.text-white {
+  color: #ffffff;
+}
+html.light .hover\:bg-white\/5:hover,
+html.light .hover\:bg-white\/\[0\.04\]:hover,
+html.light .hover\:bg-white\/\[0\.02\]:hover {
+  background-color: rgba(20, 19, 24, 0.04);
+}
+html.light .bg-white\/5 {
+  background-color: rgba(20, 19, 24, 0.05);
+}
+html.light .border-white\/10,
+html.light .hover\:border-white\/15:hover {
+  border-color: var(--color-stroke);
+}
+
+/* Crisp pastel pill badges */
+.pill-lavender {
+  background-color: #989de7;
+  color: #141318;
+}
+
+.pill-pink {
+  background-color: #ff98cb;
+  color: #141318;
+}
+
+.pill-yellow {
+  background-color: #ffcf68;
+  color: #141318;
+}
+
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-stroke);
+  border-radius: 99px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.logo-gradient-text {
+  background: linear-gradient(135deg, #989de7 0%, #ff98cb 55%, #ffcf68 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.logo-gradient-bg {
+  background: linear-gradient(135deg, #989de7 0%, #ff98cb 55%, #ffcf68 100%);
+}
+
+/* Contraste óptimo para botones con bg-accent */
+.bg-accent.text-base,
+button.bg-accent,
+a.bg-accent {
+  color: #141318 !important;
+}
+
+html.light .bg-accent.text-base,
+html.light button.bg-accent,
+html.light a.bg-accent {
+  color: #ffffff !important;
+}
+
+@keyframes access-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  60% {
+    transform: scale(1.04);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-access-pop {
+  animation: access-pop 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+
+.pulse-granted {
+  animation: pulse-granted 1.1s ease-in-out infinite;
+}
+
+@keyframes pulse-granted {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(152, 157, 231, 0.45);
+  }
+  50% {
+    box-shadow: 0 0 0 18px rgba(152, 157, 231, 0);
+  }
+}
+
+.pulse-yellow {
+  animation: pulse-yellow 1.1s ease-in-out infinite;
+}
+
+@keyframes pulse-yellow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 207, 104, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 0 18px rgba(255, 207, 104, 0);
+  }
+}

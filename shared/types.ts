@@ -1,0 +1,870 @@
+export type MembershipStatus = 'ACTIVE' | 'EXPIRED';
+
+export type MemberAdminStatus = 'ACTIVE' | 'EXPIRING' | 'EXPIRED';
+
+export interface MembershipPlan {
+  id: string;
+  name: string;
+  price: number;
+  features: string[];
+  highlight: boolean;
+  allBranches: boolean;
+}
+
+export interface PlanDetail {
+  plan: MembershipPlan;
+  payments: PaymentRecord[];
+  stats: {
+    members: number;
+    payments: number;
+    revenue: number;
+  };
+}
+
+export interface MemberAdmin extends Member {
+  /// Nombre del plan resuelto desde membershipPlanId - solo para display.
+  membershipType: string;
+  adminStatus: MemberAdminStatus;
+  allBranchesAccess: boolean;
+}
+
+export interface MemberDetail {
+  member: MemberAdmin;
+  checkIns: CheckInRecord[];
+  payments: PaymentRecord[];
+  stats: {
+    totalCheckIns: number;
+    monthCheckIns: number;
+  };
+}
+
+export interface Host {
+  id: string;
+  branchIds: string[];
+  name: string;
+  /// Partes del nombre capturadas al registrar.
+  firstName?: string | null;
+  middleName?: string | null;
+  paternalLastName?: string | null;
+  maternalLastName?: string | null;
+  specialty: string;
+  photoUrl: string;
+  /// Avatar ilustrado prediseñado (HOST_AVATAR_IDS) - elegido al
+  /// crear el host; reemplaza a photoUrl en la app.
+  avatar?: string | null;
+  shift: 'MAÑANA' | 'TARDE' | 'NOCHE';
+  isOnDuty: boolean;
+}
+
+export interface HostDetail {
+  host: Host;
+  activities: Activity[];
+  stats: {
+    activities: number;
+    attendees: number;
+  };
+}
+
+/// Horario y sala de una actividad en una sede concreta - cada sede puede
+/// configurar el suyo; sin override se usan los valores base de la actividad.
+export interface ActivityBranchTime {
+  startMinutes: number;
+  endMinutes: number;
+  room: string;
+}
+
+export interface Activity {
+  id: string;
+  branchIds: string[];
+  name: string;
+  /// Referencia canónica al host (Host.id); '' = sin asignar.
+  hostId: string;
+  /// Nombre del host - etiqueta denormalizada solo para display.
+  host: string;
+  room: string;
+  startMinutes: number;
+  endMinutes: number;
+  capacity: number;
+  /// Inscritos de HOY (America/Mexico_City) - compat con vistas viejas.
+  booked: number;
+  /// Cupo por ocurrencia Y sede: 'YYYY-MM-DD' → { branchId → inscritos }.
+  /// La llave '_' contiene un conteo legacy sin sede. Se poda al reservar
+  /// y en close-day.
+  bookedByDate?: Record<string, Record<string, number>>;
+  /// Overrides por sede: branchId → horario/sala local.
+  branchTimes?: Record<string, ActivityBranchTime>;
+}
+
+export interface ActivityDetail {
+  activity: Activity;
+  branches: Branch[];
+  host: Host | null;
+}
+
+export interface PaymentRecord {
+  id: string;
+  memberId: string;
+  memberName: string;
+  memberNumber?: string | null;
+  memberPhotoUrl?: string | null;
+  branchId: string;
+  /// Referencia canónica al plan cobrado (MembershipPlan.id).
+  planId: string;
+  /// Nombre del plan al momento del cobro - etiqueta histórica para display.
+  plan: string;
+  amount: number;
+  method: string;
+  transactionId: string;
+  status: 'APPROVED' | 'DECLINED';
+  createdAt: number;
+}
+
+export interface PaymentsReport {
+  payments: PaymentRecord[];
+  stats: {
+    total: number;
+    approved: number;
+    declined: number;
+    amountApproved: number;
+    amountDeclined: number;
+    byPlan: { planId: string; plan: string; count: number; amount: number }[];
+  };
+}
+
+export interface CheckInsReport {
+  checkIns: CheckInRecord[];
+  stats: {
+    total: number;
+    granted: number;
+    denied: number;
+    uniqueMembers: number;
+    byBranch: { branchId: string; count: number }[];
+  };
+}
+
+export interface Coupon {
+  id: string;
+  title: string;
+  description: string;
+  badge: string;
+  code: string;
+  /// Ids de planes a los que aplica el cupón; 'ALL' = todos los miembros.
+  planIds: string[];
+  branchId: string | null;
+  createdAt: number;
+}
+
+export interface Branch {
+  id: string;
+  brandId: string;
+  name: string;
+  maxCapacity: number;
+  currentCapacity: number;
+  status: 'OPEN' | 'CLOSED';
+  imageUrl: string;
+  address: string;
+  openMinutes: number;
+  closeMinutes: number;
+  lat: number | null;
+  lng: number | null;
+}
+
+export interface BranchDetail {
+  branch: Branch;
+  activities: Activity[];
+  hosts: Host[];
+  availableHosts: Host[];
+  stats: {
+    occupancy: number;
+    activities: number;
+    hostsOnDuty: number;
+  };
+}
+
+export interface Member {
+  id: string;
+  branchId: string;
+  name: string;
+  photoUrl: string;
+  /// Avatar prediseñado elegido en la app (MEMBER_AVATARS) -
+  /// reemplaza a photoUrl.
+  avatar?: string | null;
+  membershipStatus: MembershipStatus;
+  /// Referencia canónica al plan (MembershipPlan.id) - nunca el nombre.
+  membershipPlanId: string;
+  memberNumber: string;
+  membershipUntil: number | null;
+  /// Datos personales capturados al inscribir.
+  firstName?: string | null;
+  middleName?: string | null;
+  paternalLastName?: string | null;
+  maternalLastName?: string | null;
+  sex?: 'M' | 'F' | 'O' | null;
+  birthDate?: string | null;
+  phone?: string | null;
+  /// Correo capturado por recepción - ahí llega el PIN de activación;
+  /// es independiente del email de login (Google/Apple).
+  contactEmail?: string | null;
+  /// PIN de activación de un solo uso (vista staff) - null una vez
+  /// reclamada la cuenta.
+  claimPin?: string | null;
+  /// Ya vinculó su cuenta con Google/Apple (auth_uid presente).
+  linked?: boolean;
+  idNumber?: string | null;
+}
+
+/// Agregadores corporativos (coworking vende acceso por visita vía
+/// convenio) - el visitante no es miembro, el check-in lo valida la API
+/// del proveedor.
+export type PartnerProvider = 'wellhub' | 'totalpass';
+
+export interface CheckInRecord {
+  id: string;
+  userId: string;
+  branchId: string;
+  memberName: string;
+  membershipType: string;
+  method: 'qr' | 'usb' | 'manual' | 'partner';
+  granted: boolean;
+  reason?: string;
+  /// 'member' (default) o el agregador que validó el acceso.
+  provider?: 'member' | PartnerProvider;
+  /// Id del usuario dentro del agregador (no es users/{id} local).
+  externalId?: string;
+  checkInAt: number;
+  checkedOut: boolean;
+  checkedOutAt?: number;
+}
+
+export interface TrafficPoint {
+  hour: number;
+  value: number;
+}
+
+export interface KpiTrend {
+  membersToday: number;
+  avgOccupancy: number;
+  busiestBranch: number;
+  peakHour: number;
+}
+
+export interface DashboardKpis {
+  membersToday: number;
+  avgOccupancy: number;
+  busiestBranch: string;
+  peakHour: string;
+  trends: KpiTrend;
+}
+
+export interface DashboardResponse {
+  kpis: DashboardKpis;
+  branches: Branch[];
+  traffic: TrafficPoint[];
+  recentCheckIns: CheckInRecord[];
+}
+
+export type CheckInAlert = 'GREEN' | 'YELLOW' | 'RED';
+
+export interface CheckInResult {
+  granted: boolean;
+  alert?: CheckInAlert;
+  message?: string;
+  reason?: string;
+  /// member + membershipType: nombre del plan resuelto solo para display.
+  member?: Member & { membershipType?: string };
+  record?: CheckInRecord;
+}
+
+export interface PromoBanner {
+  id: string;
+  title: string;
+  subtitle: string;
+  badge: string;
+  imageUrl: string;
+  branchId: string | null;
+  createdAt: number;
+}
+
+export interface SponsorAdSocials {
+  instagram: string;
+  facebook: string;
+  tiktok: string;
+  website: string;
+  whatsapp: string;
+  /// Link libre - el anunciante elige la red/plataforma y escribe su
+  /// propia etiqueta (ej. "YouTube", "X", "Catálogo").
+  other_label: string;
+  other_url: string;
+}
+
+export interface SponsorAd {
+  id: string;
+  advertiser: string;
+  title: string;
+  subtitle: string;
+  badge: string;
+  brandColor: number | null;
+  imageUrl: string;
+  ctaLabel: string;
+  branchId: string | null;
+  /// Espacio vendido: 'carousel' = carrusel del Home + Promociones +
+  /// encabezado del directorio Aliados (premium, máx. CAROUSEL_SLOTS
+  /// simultáneos - el excedente espera en la lista), 'list' = solo
+  /// directorio de Aliados en orden aleatorio. Docs viejos con 'both'
+  /// o sin el campo se leen como 'carousel'.
+  placement: 'carousel' | 'list';
+  /// PENDING = comprado por self-serve, esperando aprobación del negocio -
+  /// la app solo muestra ACTIVE, así que nunca se cuela a producción.
+  status: 'PENDING' | 'ACTIVE' | 'PAUSED' | 'EXPIRED';
+  /// 0 = sin vigencia (anuncio PENDING - arranca al aprobarse).
+  endsAt: number;
+  impressions: number;
+  taps: number;
+  createdAt: number;
+  description: string;
+  address: string;
+  lat: number | null;
+  lng: number | null;
+  phone: string;
+  socials: SponsorAdSocials;
+  photos: string[];
+  /// Orden self-serve que originó el anuncio - null = creado por staff.
+  orderId: string | null;
+  lastRenewedAt?: number | null;
+  lastRenewedBy?: string | null;
+  lastRenewedAmount?: number | null;
+  lastCourtesyReason?: string | null;
+}
+
+export interface AdPaymentDraft {
+  amount: number;
+  method: 'cash' | 'terminal' | 'transfer' | 'card';
+  folio?: string;
+  notes?: string;
+}
+
+/// Espacios simultáneos del carrusel - el producto premium. Cuando se
+/// llenan, el comprador igual puede pagar pero su anuncio solo aparece
+/// en el directorio de Aliados hasta que se libere un lugar (entra por
+/// orden de compra: salen primero los que se vendieron antes).
+export const CAROUSEL_SLOTS = 5;
+
+/// Superficies que compra cada placement - usado para detectar
+/// "downgrade" en anuncios ligados a una orden pagada: bajar de rank
+/// (p.ej. carousel → list) requiere razón obligatoria + registro en
+/// /auditLogs. Subir de rank es un upgrade gratis del negocio.
+export const PLACEMENT_RANK: Record<SponsorAd['placement'], number> = {
+  list: 1,
+  carousel: 2,
+};
+
+/// /auditLogs/{id} - evidencia de cambios excepcionales sobre anuncios
+/// comprados por self-serve (downgrade de espacio, pausa, borrado).
+/// Escritura solo server; lectura solo admin.
+export interface AdAuditEntry {
+  id: string;
+  entity: 'sponsorAd';
+  entityId: string;
+  orderId: string | null;
+  advertiser: string;
+  action:
+    | 'PLACEMENT_DOWNGRADE'
+    | 'PLACEMENT_UPGRADE'
+    | 'PAUSE'
+    | 'DELETE'
+    | 'REACTIVATE_EXPIRED';
+  actorUid: string;
+  actorEmail: string;
+  reason: string;
+  changes: Record<string, { before: unknown; after: unknown }>;
+  payment?: AdPaymentDraft | null;
+  /// Snapshot del anuncio (sin imágenes) - solo en DELETE.
+  snapshot: Record<string, unknown> | null;
+  createdAt: number;
+}
+
+/// Precio semanal por espacio publicitario - lo configura el admin en
+/// /publicidad/venta-directa (doc /config/ads). `pricePerWeek` en MXN,
+/// cobertura global (todos los miembros).
+export interface AdSlotConfig {
+  enabled: boolean;
+  pricePerWeek: number;
+}
+
+export interface AdSelfServeConfig {
+  enabled: boolean;
+  /// Solo dos productos: 'carousel' (premium - top del directorio +
+  /// carrusel, cupo de CAROUSEL_SLOTS) y 'list' (solo directorio,
+  /// orden aleatorio). Ya no hay 'both'.
+  slots: {
+    carousel: AdSlotConfig;
+    list: AdSlotConfig;
+  };
+  /// Add-on "paquete de pushes" - cobro único. Toda compra YA incluye
+  /// 1 push gratis que sale al aprobarse; el paquete agrega `count`
+  /// pushes extra enviados uno por semana (pushLogs programados que
+  /// despacha /api/cron/push-dispatch). price en MXN; enabled=false o
+  /// count=0 no se ofrece en /anuncia.
+  push: {
+    enabled: boolean;
+    count: number;
+    price: number;
+  };
+  /// Destinatarios del aviso "llegó una solicitud pagada" (además de
+  /// los admins de staff, que siempre se notifican por su correo de
+  /// login). `global` = siempre; como toda orden es global, todos los
+  /// correos de `byBranch` reciben aviso en cada compra.
+  notify: {
+    global: string[];
+    byBranch: Record<string, string>;
+  };
+}
+
+/// /adOrders/{orderId} - compra self-serve de un negocio externo (sin
+/// login): el anunciante sube su creativo, paga por Stripe Checkout y la
+/// orden queda PENDING_APPROVAL hasta que el admin aprueba (anuncio va
+/// live) o rechaza (reembolso automático).
+export interface AdOrder {
+  id: string;
+  businessName: string;
+  contactName: string;
+  email: string;
+  phone: string;
+  /// Creativo - se copia tal cual al sponsorAd al confirmarse el pago.
+  title: string;
+  subtitle: string;
+  badge: string;
+  brandColor: number | null;
+  imageUrl: string;
+  ctaLabel: string;
+  description: string;
+  address: string;
+  /// Coordenadas que el anunciante confirmó en el mapa de /anuncia -
+  /// null si no las fijó (el webhook geocodifica como respaldo).
+  lat: number | null;
+  lng: number | null;
+  socials: SponsorAdSocials;
+  photos: string[];
+  branchId: string | null;
+  placement: SponsorAd['placement'];
+  weeks: number;
+  amount: number;
+  currency: string;
+  status:
+    | 'AWAITING_PAYMENT'
+    | 'PENDING_APPROVAL'
+    | 'APPROVED'
+    | 'REJECTED'
+    | 'EXPIRED';
+  stripeSessionId: string | null;
+  stripePaymentIntentId: string | null;
+  sponsorAdId: string | null;
+  rejectionReason: string | null;
+  /// Add-on pagado: paquete de `pushPack` pushes extra (1/semana,
+  /// programados al aprobar). El push incluido gratis sale igual al
+  /// aprobar - `pushLogIds` liga TODOS los pushLogs (inmediato +
+  /// programados) para trazabilidad/reintento.
+  wantsPush: boolean;
+  pushPack: number;
+  pushLogIds: string[];
+  pushSentAt: number | null;
+  pushError: string | null;
+  createdAt: number;
+  paidAt: number | null;
+  reviewedAt: number | null;
+  reviewedBy: string | null;
+  /// Correo de cierre de campaña (impresiones/taps/CTR + pushes) enviado
+  /// al anunciante cuando el anuncio vence - lo marca el cron
+  /// ads-report; null = aún no se envía o la campaña sigue vigente.
+  reportSentAt: number | null;
+}
+
+/// Respuesta pública de /api/ads/self-serve - lo mínimo para pintar el
+/// formulario de compra (nombre de marca, sedes, precios y ocupación
+/// del carrusel para avisar "los espacios están llenos, próximo libre
+/// el {nextFreeAt}" - la venta sigue abierta aunque haya fila).
+export interface AdSelfServeInfo {
+  enabled: boolean;
+  brandName: string;
+  /// lat/lng de cada sede para centrar el mapa de /anuncia cerca del
+  /// negocio (el anunciante suele estar cerca de donde compra).
+  branches: { id: string; name: string; lat: number | null; lng: number | null }[];
+  slots: AdSelfServeConfig['slots'];
+  /// Paquete de pushes extra (toda compra ya trae 1 push gratis).
+  push: { enabled: boolean; count: number; price: number };
+  /// Ocupación del carrusel: `occupied` cuenta anuncios ACTIVE +
+  /// órdenes PENDING_APPROVAL compradas (ya pagaron su lugar).
+  /// `nextFreeAt` = fecha aprox. en que entraría al carrusel un nuevo
+  /// comprador cuando occupied >= CAROUSEL_SLOTS; null = hay lugar ya.
+  carousel: {
+    slots: number;
+    occupied: number;
+    nextFreeAt: number | null;
+  };
+}
+
+/// Tab de la app al tocar el push - 'auto' usa el mapping por kind
+/// (SPONSOR → Aliados, BRAND → Descuentos).
+export type PushTarget =
+  | 'auto'
+  | 'home'
+  | 'explore'
+  | 'allies'
+  | 'promos'
+  | 'profile';
+
+export interface PushLog {
+  id: string;
+  title: string;
+  body: string;
+  audience: 'ALL' | 'BRANCH' | 'EXPIRED';
+  branchId: string | null;
+  kind: 'BRAND' | 'SPONSOR';
+  target: PushTarget;
+  /// DRAFT = guardada/pendiente · SENDING = despachándose · SENT = enviada ·
+  /// FAILED = FCM rechazó.
+  status: 'DRAFT' | 'SENDING' | 'SENT' | 'FAILED';
+  /// Timestamp de envío programado - null = se lanza manualmente.
+  scheduledAt: number | null;
+  sent: number;
+  createdAt: number;
+}
+
+export interface CmsResponse {
+  promos: PromoBanner[];
+  coupons: Coupon[];
+  pushes: PushLog[];
+  ads: SponsorAd[];
+}
+
+export interface AdsReportResponse {
+  ads: SponsorAd[];
+  stats: {
+    impressions: number;
+    taps: number;
+    ctr: number;
+    optedInMembers: number;
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Soporte / Chat
+// ─────────────────────────────────────────────────────────────────────
+
+export type ConversationStatus = 'open' | 'resolved';
+
+export interface Conversation {
+  id: string;
+  memberId: string;
+  memberName: string;
+  branchId: string;
+  status: ConversationStatus;
+  createdAt: number;
+  lastMessageAt: number;
+  lastMessagePreview: string;
+  /// Mensajes sin leer por el miembro
+  unreadMember: number;
+  /// Mensajes sin leer por staff
+  unreadStaff: number;
+}
+
+export interface SupportMessage {
+  id: string;
+  conversationId: string;
+  sender: 'member' | 'staff';
+  senderName: string;
+  text: string;
+  createdAt: number;
+  read: boolean;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Lealtad - recompensas y canjes
+// ─────────────────────────────────────────────────────────────────────
+
+export interface Reward {
+  id: string;
+  name: string;
+  description: string;
+  pointsCost: number;
+  /// Id de icono - la app lo mapea a Material, el B2B a Lucide.
+  icon: string;
+  active: boolean;
+  createdAt: number;
+  /// Stock limitado - null/undefined = ilimitado.
+  stock?: number | null;
+  /// Canjes realizados - se incrementa en cada redeem.
+  redeemedCount?: number;
+}
+
+/// Movimiento de puntos - `users/{id}/pointsHistory/{docId}`.
+export type PointsHistoryType =
+  | 'weekly_goal'
+  | 'streak_bonus'
+  | 'redeem'
+  | 'manual_adjustment'
+  | 'referral';
+
+export interface PointsHistoryEntry {
+  id: string;
+  type: PointsHistoryType;
+  delta: number;
+  balance: number;
+  /// Descripción legible del movimiento.
+  description: string;
+  /// Referencia opcional (rewardId, redemptionId, etc.).
+  refId?: string | null;
+  createdAt: number;
+}
+
+export interface RewardRedemption {
+  id: string;
+  memberId: string;
+  memberName: string;
+  branchId: string;
+  rewardId: string;
+  rewardName: string;
+  pointsSpent: number;
+  code: string;
+  status: 'active' | 'used' | 'expired';
+  createdAt: number;
+  expiresAt: number;
+  usedAt: number | null;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Retención & Churn Prediction (ML / Vertex AI) + Copiloto & Host IA
+// ─────────────────────────────────────────────────────────────────────
+
+export type ChurnRiskLevel = 'low' | 'medium' | 'high';
+export type ChurnPredictionProvider = 'sklearn_local' | 'vertex_ai';
+
+export type RetentionPlaybookId =
+  | 'streak_rescue'
+  | 'schedule_unlock'
+  | 'payment_assist'
+  | 'human_care'
+  | 'habit_boost';
+
+export interface RetentionInterventionInfo {
+  at: string;
+  action: 'push' | 'ticket' | 'bonus_push';
+  playbook: RetentionPlaybookId;
+  returnedAt?: string | null;
+  convertedPaymentId?: string | null;
+}
+
+export interface ChurnFeatures {
+  avg_visits_per_week_last_4: number;
+  visits_variance: number;
+  days_since_last_visit: number;
+  class_cancellation_rate: number;
+  unique_branches_visited: number;
+  active_class_types_count: number;
+  has_payment_late_30d: boolean;
+  support_tickets_last_30d: number;
+  goal_streak_current: number;
+  weekly_goal: number;
+  points_balance: number;
+  membership_months_active: number;
+  is_churned?: boolean;
+  scored_at?: string;
+}
+
+export interface ChurnMember {
+  id: string;
+  name: string;
+  email: string;
+  branch_id: string;
+  membership_status: string;
+  churn_risk_ml: number;
+  churn_risk_level: ChurnRiskLevel;
+  churn_scored_at?: string;
+  churn_provider?: ChurnPredictionProvider;
+  churn_top_factors?: string[];
+  suggested_playbook?: RetentionPlaybookId;
+  last_intervention?: RetentionInterventionInfo | null;
+  days_since_last_visit: number;
+  avg_visits_per_week_last_4: number;
+  points: number;
+  goal_streak?: number;
+  weekly_goal?: number;
+  /// Riesgo final para nivel/orden: 0.7·ML + 0.3·queja decaída (= ML si no hay score).
+  combined_risk: number;
+  /// Riesgo de queja vivo (vida media 14d) detectado en el chat de soporte.
+  complaint_risk: number;
+  last_complaint_type: ComplaintType | null;
+  last_complaint_at: string | null;
+}
+
+/// Categoría de queja detectada en mensajes de soporte (`sentiment-analysis.ts`).
+export type ComplaintType =
+  | 'precio'
+  | 'ocupación'
+  | 'staff'
+  | 'instalaciones'
+  | 'horarios'
+  | 'general'
+  | 'ninguna';
+
+export const COMPLAINT_LABELS: Record<ComplaintType, string> = {
+  precio: 'Precio',
+  ocupación: 'Ocupación',
+  staff: 'Staff',
+  instalaciones: 'Instalaciones',
+  horarios: 'Horarios',
+  general: 'General',
+  ninguna: 'Ninguna',
+};
+
+export interface ChurnMembersResponse {
+  members: ChurnMember[];
+  total: number;
+  kpis: {
+    highRisk: number;
+    mediumRisk: number;
+    lowRisk: number;
+    totalActive: number;
+    savedRevenue30d: number;
+    recoveredMembers30d: number;
+  };
+  filters: {
+    risk_level: string;
+    branch_id?: string;
+  };
+}
+
+export type SupportIntent =
+  | 'billing'
+  | 'activities'
+  | 'complaint'
+  | 'access'
+  | 'general';
+
+export interface SupportCopilotResponse {
+  intent: SupportIntent;
+  intentLabel: string;
+  urgency: 'high' | 'normal';
+  aiPowered: boolean;
+  memberContext: {
+    id: string;
+    name: string;
+    planName: string;
+    membershipStatus: string;
+    membershipUntil: string | null;
+    points: number;
+    goalStreak: number;
+    weeklyGoal: number;
+    churnRiskLevel: ChurnRiskLevel;
+    churnRiskPct: number;
+    daysSinceLastVisit: number;
+  };
+  suggestions: string[];
+}
+
+export interface MemberAiHostResponse {
+  bestHour: number;
+  bestHourWindow: string;
+  bestHourOccupancyPct: number;
+  usualHour: number;
+  usualHourLabel: string;
+  usualHourOccupancyPct: number;
+  branchName: string;
+  currentGoal: number;
+  suggestedGoal: number | null;
+  habitReason: string | null;
+  hostTip: string;
+  aiPowered: boolean;
+  generatedDate: string;
+}
+
+export interface MemberAiHostChatRequest {
+  message: string;
+  history?: Array<{
+    role: 'user' | 'model';
+    text: string;
+  }>;
+}
+
+export interface MemberAiHostChatResponse {
+  reply: string;
+  aiPowered: boolean;
+}
+
+export interface BusinessFeatures {
+  ai_churn_prediction: {
+    enabled: boolean;
+    provider: ChurnPredictionProvider;
+    plan: 'basic' | 'premium' | 'enterprise';
+    settings: {
+      daily_batch: boolean;
+      alert_threshold: number; // 0-100
+      auto_push_enabled: boolean;
+      vertex_project_id?: string;
+      vertex_location?: string;
+      vertex_endpoint_id?: string;
+    };
+  };
+}
+
+// ============ Reservas públicas del sitio web (cowhub-book) ============
+
+/// Espacio reservable del catálogo público (`/api/public/spaces`).
+export interface BookableSpace {
+  id: string;
+  name: string;
+  tagline: string;
+  description: string;
+  capacity: number;
+  pricePerHour: number;
+  pricePerDay: number | null;
+  image: string;
+  gallery: string[];
+  amenities: string[];
+  category: string;
+  featured: boolean;
+}
+
+/// Reserva pública de un espacio (`space_bookings`).
+export interface SpaceBooking {
+  id: string;
+  folio: string;
+  spaceId: string;
+  spaceName: string;
+  date: string; // 'YYYY-MM-DD' en America/Mexico_City
+  mode: 'hour' | 'day';
+  startHour: number | null;
+  endHour: number | null;
+  guests: {
+    name: string;
+    email: string;
+    phone: string | null;
+    company: string | null;
+  };
+  people: number;
+  totalMxn: number;
+  status: 'confirmed' | 'cancelled' | 'completed' | 'no_show';
+  source: 'web' | 'b2b';
+  notes: string | null;
+  /// Sello de acceso confirmado en recepción (folio validado).
+  checkedInAt?: number | null;
+  checkedInBy?: string | null;
+  createdAt: number;
+}
+
+/// Lead de tour agendado desde `/tour` de la web (`tour_requests`).
+export interface TourRequest {
+  id: string;
+  folio: string;
+  name: string;
+  company: string | null;
+  email: string;
+  phone: string;
+  preferredDate: string | null;
+  people: number;
+  interest: string | null;
+  message: string | null;
+  privacyAccepted: boolean;
+  status: 'new' | 'contacted' | 'done' | 'cancelled';
+  createdAt: number;
+}

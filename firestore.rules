@@ -1,0 +1,378 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ═══════════════ HELPERS ═══════════════
+    // El doc /staff/{uid} es la fuente de verdad del rol (MVP).
+    // Cuando haya functions que mantengan custom claims, migrar a
+    // request.auth.token.role / .branch_id para evitar el get().
+
+    function signedIn() {
+      return request.auth != null;
+    }
+    function staffPath() {
+      return /databases/$(database)/documents/staff/$(request.auth.uid);
+    }
+    function isStaff() {
+      return signedIn() && exists(staffPath());
+    }
+    function role() {
+      return get(staffPath()).data.role;
+    }
+    function staffBranch() {
+      return get(staffPath()).data.branch_id;
+    }
+    function isAdmin() {
+      return isStaff() && role() == 'ADMIN';
+    }
+    function isManager() {
+      return isStaff() && role() == 'MANAGER';
+    }
+    function isReceptionist() {
+      return isStaff() && role() == 'RECEPTIONIST';
+    }
+    function atMyBranch(branchId) {
+      return isStaff() && staffBranch() == branchId;
+    }
+    function isMember() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+    /// ¿El doc /users/{memberDocId} pertenece al auth actual? — por id
+    /// directo o por auth_uid (miembros dados de alta en recepción que
+    /// reclamaron su número desde la app).
+    function isSelfDoc(memberDocId) {
+      return signedIn()
+        && (request.auth.uid == memberDocId
+            || get(/databases/$(database)/documents/users/$(memberDocId))
+                 .data.auth_uid == request.auth.uid);
+    }
+
+    // ═══════════════ CONFIG DE MARCA ═══════════════
+
+    match /config/{doc} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    // ═══════════════ CATÁLOGOS GLOBALES ═══════════════
+    // Solo ADMIN escribe — gerente ve pero no toca.
+
+    match /plans/{id} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    match /promotions/{id} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    match /sponsorAds/{id} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+      // impressions / taps solo functions (Admin SDK ignora reglas).
+      // status PENDING = compra self-serve esperando aprobación — la app
+      // solo consulta ACTIVE, así que no se muestra al miembro.
+    }
+
+    // Órdenes de publicidad self-serve (/anuncia → Stripe Checkout).
+    // Escritura solo API (orders.post, webhook, approve/reject); el
+    // contacto del anunciante es dato comercial — solo staff lo lee.
+    match /adOrders/{id} {
+      allow read: if isStaff();
+      allow create, update, delete: if false;
+    }
+
+    // Evidencia de cambios excepcionales sobre anuncios comprados
+    // (downgrade de espacio, pausa, borrado). Escritura solo API.
+    match /auditLogs/{id} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    match /pushLogs/{id} {
+      allow read, write: if isAdmin();
+    }
+
+    match /store/products/{id} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    match /webhookEvents/{id} {
+      allow read, write: if false;
+    }
+
+    // Recompensas de lealtad — catálogo global; hoy se siembra con
+    // Admin SDK. El miembro lo lee para canjear puntos.
+    match /rewards/{id} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    // ═══════════════ SEDES ═══════════════
+
+    match /branches/{id} {
+      allow read: if signedIn();
+      allow update: if isAdmin()
+        || (isManager() && atMyBranch(id)
+            && !request.resource.data.diff(resource.data)
+                 .affectedKeys()
+                 .hasAny(['max_capacity', 'current_capacity']));
+      // max_capacity lo define el negocio (admin); current_capacity solo
+      // functions. El gerente edita info/horario/status de su sede.
+      allow create, delete: if isAdmin();
+    }
+
+    // ═══════════════ STAFF ═══════════════
+
+    match /staff/{uid} {
+      allow get: if isAdmin() || (signedIn() && request.auth.uid == uid);
+      allow list: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // ═══════════════ MIEMBROS ═══════════════
+
+    // El miembro se ubica por doc id (seed) o por auth_uid (reclamo en app).
+    function isSelf() {
+      return signedIn()
+        && (request.auth.uid == uid
+            || resource.data.auth_uid == request.auth.uid);
+    }
+
+    match /users/{uid} {
+      // Propio doc por id — allow aparte: en un doc inexistente
+      // `resource` es null y cualquier acceso a resource.data rompe la
+      // evaluación completa, así que este check nunca debe mezclarse
+      // con condiciones que lean resource.
+      allow get: if signedIn() && request.auth.uid == uid;
+      // Doc reclamado vía auth_uid, o staff con scope de su sede.
+      allow get: if (signedIn()
+            && resource.data.auth_uid == request.auth.uid)
+        || isAdmin()
+        || ((isManager() || isReceptionist())
+            && resource.data.branch_id == staffBranch());
+      // list: staff lista por sede; el miembro puede escuchar su propio
+      // doc — por id directo (seed: users/{authUid}) o por auth_uid
+      // (reclamo: where auth_uid==uid lo garantiza). Un listener de
+      // documento se evalúa contra `list`, no `get`.
+      allow list: if isStaff();
+      allow list: if signedIn() && request.auth.uid == uid;
+      allow list: if signedIn()
+        && resource.data.auth_uid == request.auth.uid;
+
+      // Alta solo en recepción (B2B) — la app no crea docs de miembro.
+      allow create: if isAdmin()
+        || ((isManager() || isReceptionist())
+            && request.resource.data.branch_id == staffBranch());
+
+      // membership_*, member_number, qr_code, stripe_customer_id,
+      // last_checkin_at, claim_pin, contact_email: jamás escritos por
+      // clientes → solo functions.
+      allow update: if isAdmin()
+        || (isManager()
+            && resource.data.branch_id == staffBranch()
+            && request.resource.data.branch_id == staffBranch()
+            && !request.resource.data.diff(resource.data)
+                 .affectedKeys()
+                 .hasAny(['membership_status', 'membership_plan_id',
+                          'membership_until', 'member_number', 'qr_code',
+                          'stripe_customer_id', 'last_checkin_at',
+                          'claim_pin', 'contact_email']))
+        || (isSelf()
+            && request.resource.data.diff(resource.data)
+                 .affectedKeys()
+                 .hasOnly(['photo_url', 'avatar', 'phone', 'first_name',
+                           'middle_name', 'paternal_last_name',
+                           'maternal_last_name', 'sex', 'birth_date',
+                           'branch_id', 'weekly_goal']));
+
+      allow delete: if isAdmin();
+
+      match /coupons/{couponId} {
+        // El doc padre puede estar bajo auth_uid (reclamo) — por eso
+        // va por get() y no por resource.
+        // Escritura cerrada al cliente: el self-write ilimitado era
+        // superficie de spam sin uso real (el claim de cupón irá por API
+        // con contador server-side — cap de cupones activos por miembro).
+        allow read: if isSelfDoc(uid) || isStaff();
+        allow create, update, delete: if false;
+      }
+
+      // Lealtad: historial de visitas y canjes — escritura solo
+      // functions (checkin.post / rewards/redeem). El miembro lee lo suyo.
+      match /visits/{dateId} {
+        allow read: if isSelfDoc(uid) || isStaff();
+        allow create, update, delete: if false;
+      }
+
+      match /redemptions/{redemptionId} {
+        allow read: if isSelfDoc(uid) || isStaff();
+        allow create, update, delete: if false;
+      }
+
+      // Features de ML para predicción de churn (solo staff)
+      match /churn_features/{dateId} {
+        allow read: if isStaff();
+        allow write: if false;
+      }
+    }
+
+    // ═══════════════ EQUIPO ═══════════════
+
+    match /hosts/{id} {
+      allow read: if signedIn();
+      allow create: if isAdmin()
+        || (isManager() && staffBranch() in request.resource.data.branch_ids);
+      // Gerente: solo campos locales de hosts asignados a su sede.
+      allow update: if isAdmin()
+        || (isManager()
+            && staffBranch() in resource.data.branch_ids
+            && request.resource.data.diff(resource.data)
+                 .affectedKeys()
+                 .hasOnly(['shift', 'is_on_duty', 'branch_ids']));
+      allow delete: if isAdmin();
+    }
+
+    // ═══════════════ ACTIVIDADES ═══════════════
+
+    match /activities/{id} {
+      allow read: if signedIn();
+      allow create, delete: if isAdmin();
+      // Gerente: solo su clave dentro de branch_times — nada global.
+      allow update: if isAdmin()
+        || (isManager()
+            && staffBranch() in resource.data.branch_ids
+            && request.resource.data.diff(resource.data)
+                 .affectedKeys()
+                 .hasOnly(['branch_times'])
+            && request.resource.data.branch_times
+                 .diff(resource.data.branch_times)
+                 .affectedKeys()
+                 .hasOnly([staffBranch()]));
+    }
+
+    // ═══════════════ RESERVAS DE ACTIVIDAD ═══════════════
+    // Escritura solo backend (/api/activities/:id/book) — el contador
+    // activities.booked se mantiene ahí. El miembro lee solo sus reservas;
+    // staff las lista todas.
+
+    match /bookings/{id} {
+      allow read: if isStaff()
+        || (signedIn() && resource.data.auth_uid == request.auth.uid);
+      allow create, update, delete: if false;
+    }
+
+    // Historial de reservas archivadas en el cierre de día — solo
+    // lectura staff (reportes); escritura exclusiva del backend.
+    match /bookings_archive/{id} {
+      allow read: if isStaff();
+      allow create, update, delete: if false;
+    }
+
+    // ═══════════════ CHECK-INS (efímeros, TTL) ═══════════════
+    // Escritura solo functions. Lectura: staff de la sede.
+    // El miembro no los lee — su última visita vive en users.last_checkin_at.
+
+    match /checkins/{id} {
+      allow get: if isAdmin()
+        || (isStaff() && resource.data.branch_id == staffBranch());
+      allow list: if isStaff();
+      allow create, update, delete: if false;
+    }
+
+    // ═══════════════ ESTADÍSTICAS Y PRONÓSTICO ═══════════════
+
+    match /dailyStats/{id} {
+      allow get: if isAdmin()
+        || (isStaff() && resource.data.branch_id == staffBranch());
+      allow list: if isStaff();
+      allow create, update, delete: if false;
+    }
+
+    match /forecasts/{branchId} {
+      allow read: if signedIn();          // la app lo muestra al miembro
+      allow write: if false;              // solo closeDay (functions)
+    }
+
+    // ═══════════════ PAGOS ═══════════════
+    // Escritura solo functions (webhook Stripe / registerManualPayment).
+    // El miembro lee su historial; staff lee su sede.
+
+    match /payments/{id} {
+      allow get: if isAdmin()
+        || (isStaff() && resource.data.branch_id == staffBranch())
+        || (isMember() && resource.data.member_id == request.auth.uid);
+      /// list también va por documento — el query del miembro debe filtrar
+      /// member_id == uid; sin esto cualquier miembro listaba TODOS los pagos.
+      allow list: if isStaff()
+        || (isMember() && resource.data.member_id == request.auth.uid);
+      allow create, update, delete: if false;
+    }
+
+    // ═══════════════ SOPORTE / CHAT ═══════════════
+    // Escritura solo backend (API). El miembro lee su conversación; staff
+    // lee las de su sede (o todas si es admin). Mensajes en subcolección.
+
+    match /conversations/{id} {
+      // El miembro lee solo su conversación — isSelfDoc resuelve
+      // users/{member_id}.auth_uid contra el auth actual (reclamo).
+      allow read: if isAdmin()
+        || (isStaff() && resource.data.branch_id == staffBranch())
+        || (signedIn() && resource.data.member_id != null
+            && isSelfDoc(resource.data.member_id));
+      // Escritura solo API (functions/Admin SDK).
+      allow create, update, delete: if false;
+
+      match /messages/{msgId} {
+        allow read: if isAdmin()
+          || (isStaff()
+              && get(/databases/$(database)/documents/conversations/$(id))
+                   .data.branch_id == staffBranch())
+          || (signedIn()
+              && isSelfDoc(
+                   get(/databases/$(database)/documents/conversations/$(id))
+                     .data.member_id));
+        allow create, update, delete: if false;
+      }
+    }
+
+
+    // ═══════════════ AGENDA WEB PÚBLICA ═══════════════
+    // Catálogo y agenda que consume cowhub-book vía /api/public/*.
+    // La escritura de reservas/tours es solo backend (admin SDK);
+    // staff solo actualiza status/notas desde el B2B.
+
+    match /spaces/{id} {
+      allow read: if isStaff();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /space_bookings/{id} {
+      allow read: if isStaff();
+      // Una reserva con acceso confirmado (completed) queda bloqueada
+      // para recepción: solo admin/gerente puede mover su estado.
+      // Recepción sí puede confirmar acceso (confirmed → completed) y
+      // actualizar otros campos (notas) de una completada.
+      allow update: if isStaff()
+        && !(isReceptionist()
+             && resource.data.status == 'completed'
+             && request.resource.data.status != resource.data.status);
+      allow create, delete: if false;
+    }
+
+    match /tour_requests/{id} {
+      allow read: if isStaff();
+      allow update: if isStaff();
+      allow create, delete: if false;
+    }
+
+    // ═══════════════ DEFAULT: DENY ═══════════════
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -620,3 +620,32 @@ publicidad/CMS (`ads/orders.get`, `ads/config.get`, `ads/{id}/stats.get`,
   ID). Pendiente también reporte de visitas×tarifa (liquidación
   estimada) una vez conocidas las tarifas negociadas por tier.
 - Moneda/locale: México — `es-MX`, `$` (MXN), sedes seed en Toluca/Metepec.
+
+## ⏱️ Catálogo de Cron Jobs (Desactivados por ahora en `vercel.json`)
+
+Los cron jobs están temporalmente deshabilitados en `vercel.json` (`"crons": []`) para permitir el despliegue en cualquier plan de Vercel sin restricciones de cuota. Todos los endpoints existen en `server/api/cron/**` y están protegidos por `Authorization: Bearer <CRON_SECRET>`:
+
+| Endpoint | Horario Cron (UTC) | Equivalente CDMX | Propósito |
+| :--- | :--- | :--- | :--- |
+| `/api/cron/close-day` | `55 5 * * *` | 23:55 CDMX | Cierre de día: agrega `dailyStats`, actualiza `forecasts`, limpia check-ins activos, resetea `current_capacity` de sedes y poda reservas pasadas |
+| `/api/cron/auto-checkout` | `*/15 * * * *` | Cada 15 min | Libera check-ins con >90 min sin salida (`auto_checkout_cron`) y barre conversaciones de soporte abandonadas (>24h) |
+| `/api/cron/push-dispatch` | `0 16 * * *` | 10:00 CDMX | Despacha notificaciones push programadas en el CMS (`/cms/notificaciones`) |
+| `/api/cron/ads-report` | `30 16 * * *` | 10:30 CDMX | Verifica vencimiento de campañas publicitarias y envía reporte final de impresiones/clics al anunciante |
+| `/api/cron/redemption-reminder` | `0 15 * * *` | 09:00 CDMX | Envía recordatorio push de códigos de recompensa (`RWR-XXXXXX`) próximos a expirar |
+| `/api/cron/churn-features` | `0 9 * * *` | 03:00 CDMX | Calcula features de retención/abandono de miembros activos |
+| `/api/cron/churn-predict` | `30 9 * * *` | 03:30 CDMX | Ejecuta inferencia de riesgo de abandono (churn) sobre los features calculados |
+
+Para reactivarlos en `vercel.json` (requiere Vercel Pro) o configurarlos en un servicio externo como `cron-job.org`:
+
+```json
+{
+  "crons": [
+    { "path": "/api/cron/close-day", "schedule": "55 5 * * *" },
+    { "path": "/api/cron/push-dispatch", "schedule": "0 16 * * *" },
+    { "path": "/api/cron/ads-report", "schedule": "30 16 * * *" },
+    { "path": "/api/cron/redemption-reminder", "schedule": "0 15 * * *" },
+    { "path": "/api/cron/churn-features", "schedule": "0 9 * * *" },
+    { "path": "/api/cron/churn-predict", "schedule": "30 9 * * *" }
+  ]
+}
+```

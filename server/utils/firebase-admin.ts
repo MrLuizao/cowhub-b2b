@@ -11,8 +11,17 @@ import { getMessaging } from 'firebase-admin/messaging';
 /// en la raíz del repo (gitignored).
 
 function loadServiceAccount(): Record<string, string> {
-  const fromEnv = process.env.FIREBASE_SERVICE_ACCOUNT;
-  if (fromEnv) return JSON.parse(fromEnv);
+  const fromEnv = process.env.FIREBASE_SERVICE_ACCOUNT?.trim();
+  if (fromEnv) {
+    const jsonStr = fromEnv.startsWith('{')
+      ? fromEnv
+      : Buffer.from(fromEnv, 'base64').toString('utf8');
+    const parsed = JSON.parse(jsonStr);
+    if (typeof parsed.private_key === 'string') {
+      parsed.private_key = parsed.private_key.replace(/\\n/g, '\n');
+    }
+    return parsed;
+  }
   const file = resolve(process.cwd(), 'service-account.json');
   return JSON.parse(readFileSync(file, 'utf8'));
 }

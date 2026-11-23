@@ -823,6 +823,9 @@ export interface BookableSpace {
   amenities: string[];
   category: string;
   featured: boolean;
+  branchIds?: string[];
+  active?: boolean;
+  sort?: number;
 }
 
 /// Reserva pública de un espacio (`space_bookings`).

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowLeft, Check, Pencil, Power, X } from '@lucide/vue';
+import { ArrowLeft, Check, Pencil, Power, Trash2, X } from '@lucide/vue';
 
 import { HOST_AVATAR_IDS, hostAvatarSrc } from '#shared/host-avatars';
 import type { Branch, Activity, HostDetail } from '#shared/types';
@@ -312,6 +312,22 @@ async function saveActivity(): Promise<void> {
 
 const dutyModalOpen = ref(false);
 const togglingDuty = ref(false);
+const deleteModalOpen = ref(false);
+const deleting = ref(false);
+
+async function deleteHost(): Promise<void> {
+  if (!detail.value || deleting.value) return;
+  deleting.value = true;
+  try {
+    await $api(`/api/hosts/${detail.value.host.id}`, {
+      method: 'DELETE',
+    });
+    deleteModalOpen.value = false;
+    await navigateTo('/anfitriones');
+  } finally {
+    deleting.value = false;
+  }
+}
 
 const dutyDescription = computed(() => {
   const t = detail.value?.host;
@@ -578,20 +594,20 @@ async function runToggleDuty(): Promise<void> {
             <span
               class="text-[10px] font-bold uppercase tracking-widest text-text-dim"
             >
-              Espacios
+              Eventos
             </span>
             <p class="mt-1 text-[10px] text-text-dim">
               {{
                 isAdmin
-                  ? 'Asigna o quita espacios - un espacio quitado queda sin encargado.'
-                  : 'Solo puedes asignar espacios exclusivas de tu sede; las compartidas se conservan como están.'
+                  ? 'Asigna o quita eventos - un evento quitado queda sin encargado.'
+                  : 'Solo puedes asignar eventos exclusivos de tu sede; los compartidos se conservan como están.'
               }}
             </p>
             <div
               v-if="assignableActivities.length === 0"
               class="mt-2 rounded-xl border border-dashed border-stroke p-3 text-center text-[11px] font-semibold text-text-dim"
             >
-              No hay espacios disponibles para asignar.
+              No hay eventos disponibles para asignar.
             </div>
             <div v-else class="mt-2 grid grid-cols-2 gap-2">
               <button
@@ -653,7 +669,7 @@ async function runToggleDuty(): Promise<void> {
       <h2
         class="mb-3 text-sm font-black uppercase tracking-widest text-text-muted"
       >
-        Espacios asignadas
+        Próximos eventos
       </h2>
       <div class="space-y-3">
         <div
@@ -754,7 +770,7 @@ async function runToggleDuty(): Promise<void> {
                 :disabled="saving"
                 @click="
                   confirmSave(
-                    'Guardar cambios de la espacio',
+                    'Guardar cambios del evento',
                     activityChanges,
                     saveActivity,
                   )
@@ -781,7 +797,7 @@ async function runToggleDuty(): Promise<void> {
                 <button
                   type="button"
                   class="block max-w-full cursor-pointer truncate text-sm font-black text-text-primary transition hover:text-accent hover:underline"
-                  @click="navigateTo(`/espacios/${activity.id}`)"
+                  @click="navigateTo(`/eventos/${activity.id}`)"
                 >
                   {{ activity.name }}
                 </button>
@@ -819,7 +835,7 @@ async function runToggleDuty(): Promise<void> {
               <button
                 v-if="isAtMyBranch(activity.branchIds)"
                 class="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full border border-stroke text-text-muted transition hover:border-accent hover:text-accent"
-                title="Editar espacio"
+                title="Editar evento"
                 @click="startEditActivity(activity)"
               >
                 <Pencil class="h-3.5 w-3.5" />
@@ -832,9 +848,54 @@ async function runToggleDuty(): Promise<void> {
         v-if="detail.activities.length === 0"
         class="py-6 text-center text-xs font-semibold text-text-dim"
       >
-        Sin espacios asignadas
+        Sin eventos asignados
       </p>
     </section>
+
+    <section
+      v-if="isAdmin"
+      class="flex items-center justify-between rounded-2xl border border-red-400/30 bg-red-400/5 p-5"
+    >
+      <div>
+        <h3 class="text-xs font-black uppercase tracking-widest text-red-400">
+          Eliminar anfitrión
+        </h3>
+        <p class="mt-0.5 text-[11px] text-text-dim">
+          Retira permanentemente a este integrante del equipo y de las sedes asignadas.
+        </p>
+      </div>
+      <button
+        type="button"
+        class="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-red-400/40 bg-red-400/10 px-4 py-1.5 text-[11px] font-black text-red-400 transition hover:bg-red-400/20"
+        @click="deleteModalOpen = true"
+      >
+        <Trash2 class="h-3.5 w-3.5" />
+        Eliminar anfitrión
+      </button>
+    </section>
+
+    <UModal
+      v-model:open="deleteModalOpen"
+      title="Eliminar anfitrión"
+      :description="`Se eliminará a '${detail.host.name}' del equipo. Esta acción no se puede deshacer.`"
+    >
+      <template #footer>
+        <div class="flex w-full justify-end gap-2">
+          <UButton
+            label="Cancelar"
+            color="neutral"
+            variant="outline"
+            @click="deleteModalOpen = false"
+          />
+          <UButton
+            label="Eliminar anfitrión"
+            color="primary"
+            :loading="deleting"
+            @click="deleteHost"
+          />
+        </div>
+      </template>
+    </UModal>
 
     <UModal
       v-model:open="dutyModalOpen"

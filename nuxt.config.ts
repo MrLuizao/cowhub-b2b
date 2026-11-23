@@ -33,7 +33,7 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     public: {
-      firebaseConfig: '',
+      firebaseConfig: process.env.NUXT_PUBLIC_FIREBASE_CONFIG || '',
       /// App Check web (reCAPTCHA Enterprise) — site key de Firebase
       /// Console → App Check → registrar app web. Vacío = no se activa.
       recaptchaSiteKey: '',

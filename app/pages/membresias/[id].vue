@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowLeft, Check, Pencil, Plus, Trash2, X } from '@lucide/vue';
+import { ArrowLeft, Check, Pencil, Plus, Sparkles, Trash2, X } from '@lucide/vue';
 
 import type { PlanDetail } from '#shared/types';
 
@@ -209,9 +209,18 @@ async function deletePlan(): Promise<void> {
         {{ detail.plan.name.charAt(0) }}
       </div>
       <div class="min-w-0 flex-1">
-        <h1 class="truncate text-xl font-black text-text-primary">
-          {{ detail.plan.name }}
-        </h1>
+        <div class="flex items-center gap-2">
+          <h1 class="truncate text-xl font-black text-text-primary">
+            {{ detail.plan.name }}
+          </h1>
+          <span
+            v-if="detail.plan.highlight"
+            title="Plan destacado"
+            class="inline-flex h-5 w-5 items-center justify-center rounded-full border border-amber-400/30 bg-amber-400/10 text-amber-400"
+          >
+            <Sparkles class="h-2.5 w-2.5" />
+          </span>
+        </div>
         <p class="mt-1 text-[11px] text-text-dim">
           $ {{ detail.plan.price }} /mes ·
           {{
@@ -220,14 +229,6 @@ async function deletePlan(): Promise<void> {
               : 'Solo sede de registro'
           }}
         </p>
-      </div>
-      <div class="flex items-center gap-2">
-        <span
-          v-if="detail.plan.highlight"
-          class="rounded-full bg-accent/15 px-2.5 py-1 text-[10px] font-black text-accent"
-        >
-          PREMIUM
-        </span>
       </div>
     </div>
 
@@ -434,14 +435,27 @@ async function deletePlan(): Promise<void> {
       </div>
     </div>
 
-    <button
+    <section
       v-if="isAdmin"
-      class="flex h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-full border border-red-400/40 bg-red-400/10 text-xs font-black text-red-400 transition hover:bg-red-400/20"
-      @click="confirmDelete"
+      class="flex items-center justify-between rounded-2xl border border-red-400/30 bg-red-400/5 p-5"
     >
-      <Trash2 class="h-4 w-4" />
-      Eliminar plan
-    </button>
+      <div>
+        <h3 class="text-xs font-black uppercase tracking-widest text-red-400">
+          Eliminar membresía
+        </h3>
+        <p class="mt-0.5 text-[11px] text-text-dim">
+          Retira permanentemente este plan del catálogo comercial y de la app.
+        </p>
+      </div>
+      <button
+        type="button"
+        class="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-red-400/40 bg-red-400/10 px-4 py-1.5 text-[11px] font-black text-red-400 transition hover:bg-red-400/20"
+        @click="confirmDelete"
+      >
+        <Trash2 class="h-3.5 w-3.5" />
+        Eliminar membresía
+      </button>
+    </section>
 
     <UModal
       v-model:open="saveModalOpen"

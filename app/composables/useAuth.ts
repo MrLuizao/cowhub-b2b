@@ -32,7 +32,7 @@ export const ROLE_LABELS: Record<StaffRole, string> = {
 export const ROLE_ROUTES: Record<StaffRole, string[]> = {
   ADMIN: ['*'],
   MANAGER: ['*'],
-  RECEPTIONIST: ['/', '/recepcion', '/miembros', '/espacios', '/anfitriones', '/membresias', '/recompensas', '/soporte', '/legal', '/anuncia'],
+  RECEPTIONIST: ['/', '/recepcion', '/miembros', '/salas', '/espacios', '/eventos', '/anfitriones', '/membresias', '/recompensas', '/soporte', '/legal', '/anuncia'],
 };
 
 export const ROLE_HOME: Record<StaffRole, string> = {
@@ -177,6 +177,19 @@ export function useAuth() {
     }
     const auth = getAuth(firebase.app);
     const db = firebase.db;
+
+    if (import.meta.client) {
+      auth.authStateReady().then(() => {
+        if (!auth.currentUser) {
+          session.value = null;
+          const path = window.location.pathname;
+          if (path !== '/login' && !path.startsWith('/legal') && !path.startsWith('/anuncia')) {
+            navigateTo('/login');
+          }
+        }
+      });
+    }
+
     let stopStaff: (() => void) | null = null;
     const stopAuth = onAuthStateChanged(auth, (user) => {
       stopStaff?.();

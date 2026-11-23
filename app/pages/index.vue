@@ -51,10 +51,26 @@ const TOUR_STATUSES = [
 let unsubB: Unsubscribe | null = null;
 let unsubT: Unsubscribe | null = null;
 
+// ─── Salas en vivo (ocupación por sede, en tiempo real) ───
+interface RoomSpace {
+  id: string;
+  name: string;
+  capacity: number;
+  pricePerHour: number;
+  branchIds: string[];
+}
+
+const spaces = ref<RoomSpace[]>([]);
+const spacesPending = ref(true);
+const branchNames = ref<Record<string, string>>({});
+const nowTick = ref(Date.now());
+let tickTimer: ReturnType<typeof setInterval> | null = null;
+
 onMounted(() => {
   start();
   if (!db) {
     agendaPending.value = false;
+    spacesPending.value = false;
     return;
   }
   unsubB = onSnapshot(
@@ -110,7 +126,7 @@ onMounted(() => {
     },
   );
 
-  /// Catálogo de salas + nombres de sede (solo lectura, una vez).
+  /// Catálogo de salas + nombres de sede (solo lectura desde Firestore).
   getDocs(collection(db, 'spaces'))
     .then((snap) => {
       spaces.value = snap.docs
@@ -127,7 +143,10 @@ onMounted(() => {
         .filter((sp) => sp.branchIds.length > 0);
       spacesPending.value = false;
     })
-    .catch(() => (spacesPending.value = false));
+    .catch(() => {
+      spacesPending.value = false;
+    });
+
   getDocs(collection(db, 'branches')).then((snap) => {
     branchNames.value = Object.fromEntries(
       snap.docs.map((d) => [d.id, (d.data().name as string) ?? d.id]),
@@ -366,26 +385,6 @@ const canSeeFullAgenda = computed(() =>
 );
 
 // ─── Salas en vivo (ocupación por sede, en tiempo real) ───
-/// Las salas (`spaces.branch_ids`) pertenecen a las sedes del negocio;
-/// el staff ve las de SU sede y admin (sin sede) las ve todas con su
-/// etiqueta de sede en cada tarjeta. La ocupación se deriva de las
-/// reservas web de HOY: una sala está ocupada si una reserva vigente
-/// cubre la hora actual (o es de día completo); 'next' es la siguiente
-/// reserva por horas del día.
-interface RoomSpace {
-  id: string;
-  name: string;
-  capacity: number;
-  pricePerHour: number;
-  branchIds: string[];
-}
-
-const spaces = ref<RoomSpace[]>([]);
-const spacesPending = ref(true);
-const branchNames = ref<Record<string, string>>({});
-const nowTick = ref(Date.now());
-let tickTimer: ReturnType<typeof setInterval> | null = null;
-
 const staffBranchId = computed(() => session.value?.branchId ?? null);
 const visibleSpaces = computed(() =>
   staffBranchId.value

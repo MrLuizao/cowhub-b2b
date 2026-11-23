@@ -10,13 +10,13 @@ import {
 } from '../../../utils/public-booking';
 
 /// GET /api/public/spaces/:id?date=YYYY-MM-DD
-/// Devuelve el espacio + intervalos ocupados confirmados para esa fecha.
+/// Devuelve el espacio desde Firestore + intervalos ocupados confirmados para esa fecha.
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id') ?? '';
   const date = String(getQuery(event).date ?? '');
 
   const spaceSnap = await db().collection('spaces').doc(id).get();
-  if (!spaceSnap.exists) {
+  if (!spaceSnap.exists || spaceSnap.data()?.active !== true) {
     throw createError({ statusCode: 404, statusMessage: 'Espacio no encontrado' });
   }
   const space: BookableSpace = toBookableSpace(spaceSnap);

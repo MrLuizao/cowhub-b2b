@@ -28,5 +28,17 @@ export async function $api<T = unknown>(
   const headers = new Headers(opts?.headers as HeadersInit | undefined);
   if (token) headers.set('Authorization', `Bearer ${token}`);
   if (appCheckToken) headers.set('X-Firebase-AppCheck', appCheckToken);
-  return $fetch<T>(request, { ...opts, headers }) as Promise<T>;
+
+  try {
+    return (await $fetch<T>(request, { ...opts, headers })) as T;
+  } catch (err: any) {
+    if ((err?.statusCode === 401 || err?.response?.status === 401) && import.meta.client) {
+      const { session } = useAuth();
+      session.value = null;
+      if (window.location.pathname !== '/login') {
+        navigateTo('/login');
+      }
+    }
+    throw err;
+  }
 }

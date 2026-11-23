@@ -277,6 +277,11 @@ function formatDate(ts: number | null): string {
         class="w-full max-w-sm"
         size="lg"
       />
+      <span
+        class="rounded-full border border-stroke bg-surface px-3 py-1 text-[11px] font-bold text-text-muted"
+      >
+        {{ filtered.length }} miembros
+      </span>
       <button
         v-if="canCreateMember"
         class="ml-auto flex cursor-pointer items-center gap-1.5 rounded-full bg-accent px-4 py-1.5 text-[11px] font-black text-base transition hover:opacity-90"
@@ -285,12 +290,6 @@ function formatDate(ts: number | null): string {
         <Plus class="h-3.5 w-3.5" />
         Nuevo miembro
       </button>
-      <span
-        :class="canCreateMember ? '' : 'ml-auto'"
-        class="rounded-full border border-stroke bg-surface px-3 py-1 text-[11px] font-bold text-text-muted"
-      >
-        {{ filtered.length }} miembros
-      </span>
     </div>
 
     <div class="overflow-hidden rounded-2xl border border-stroke bg-surface">

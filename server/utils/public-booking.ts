@@ -50,6 +50,9 @@ export function toBookableSpace(s: DocumentSnapshot): BookableSpace {
     amenities: Array.isArray(d.amenities) ? d.amenities : [],
     category: d.category ?? 'sala-juntas',
     featured: d.featured === true,
+    branchIds: Array.isArray(d.branch_ids) ? d.branch_ids : [],
+    active: d.active !== false,
+    sort: typeof d.sort === 'number' ? d.sort : 99,
   };
 }
 

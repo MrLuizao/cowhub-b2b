@@ -904,7 +904,7 @@ async function unassignHost(): Promise<void> {
 
     <section>
       <h2 class="mb-3 text-sm font-black uppercase tracking-widest text-text-muted">
-        Espacios y horarios
+        Próximos eventos
       </h2>
 
       <div v-if="canManageBranch" class="my-4 flex items-center gap-3">
@@ -912,7 +912,7 @@ async function unassignHost(): Promise<void> {
           v-model="assignActivityId"
           :items="availableActivityItems"
           value-key="value"
-          placeholder="Asignar espacio existente a esta sede…"
+          placeholder="Asignar evento existente a esta sede…"
           class="flex-1"
         />
         <button
@@ -1000,7 +1000,7 @@ async function unassignHost(): Promise<void> {
                 :disabled="saving"
                 @click="
                   confirmSave(
-                    'Guardar cambios de la espacio',
+                    'Guardar cambios del evento',
                     activityChanges,
                     saveActivity,
                   )
@@ -1016,7 +1016,7 @@ async function unassignHost(): Promise<void> {
             <button
               type="button"
               class="group flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left"
-              title="Ver detalle de la espacio"
+              title="Ver detalle del evento"
               @click="openActivityDetail(activity)"
             >
               <div
@@ -1047,7 +1047,7 @@ async function unassignHost(): Promise<void> {
             <button
               v-if="canManageBranch"
               class="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full border border-stroke text-text-muted transition hover:border-accent hover:text-accent"
-              title="Editar espacio"
+              title="Editar evento"
               @click.stop="startEditActivity(activity)"
             >
               <Pencil class="h-3 w-3" />
@@ -1068,7 +1068,7 @@ async function unassignHost(): Promise<void> {
         v-if="detail.activities.length === 0"
         class="mt-3 py-4 text-center text-xs font-semibold text-text-dim"
       >
-        Sin espacios en esta sede
+        Sin eventos programados en esta sede
       </p>
 
     </section>
@@ -1226,8 +1226,8 @@ async function unassignHost(): Promise<void> {
 
     <UModal
       v-model:open="activityDetailOpen"
-      :title="selectedActivity?.name ?? 'Detalle de espacio'"
-      description="Espacio que se imparte en esta sede."
+      :title="selectedActivity?.name ?? 'Detalle del evento'"
+      description="Evento programado en esta sede."
     >
       <template #body>
         <div v-if="selectedActivity" class="space-y-4">
@@ -1334,12 +1334,12 @@ async function unassignHost(): Promise<void> {
             trailing
             @click="
               activityDetailOpen = false;
-              navigateTo(`/espacios/${selectedActivity?.id}`);
+              navigateTo(`/eventos/${selectedActivity?.id}`);
             "
           />
           <UButton
             v-if="canManageBranch"
-            label="Editar espacio"
+            label="Editar evento"
             icon="i-lucide-pencil"
             @click="editSelectedActivity"
           />
@@ -1349,7 +1349,7 @@ async function unassignHost(): Promise<void> {
 
     <UModal
       v-model:open="removeActivityModalOpen"
-      title="Quitar espacio de la sede"
+      title="Quitar evento de la sede"
       :description="removeActivityDescription"
     >
       <template #footer>
@@ -1370,13 +1370,27 @@ async function unassignHost(): Promise<void> {
       </template>
     </UModal>
 
-    <button
-      class="flex h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-full border border-red-400/40 bg-red-400/10 text-xs font-black text-red-400 transition hover:bg-red-400/20"
-      @click="deleteModalOpen = true"
+    <section
+      v-if="isAdmin"
+      class="flex items-center justify-between rounded-2xl border border-red-400/30 bg-red-400/5 p-5"
     >
-      <Trash2 class="h-4 w-4" />
-      Eliminar sede
-    </button>
+      <div>
+        <h3 class="text-xs font-black uppercase tracking-widest text-red-400">
+          Eliminar sede
+        </h3>
+        <p class="mt-0.5 text-[11px] text-text-dim">
+          Retira permanentemente esta sucursal del catálogo y de la red de sedes.
+        </p>
+      </div>
+      <button
+        type="button"
+        class="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-red-400/40 bg-red-400/10 px-4 py-1.5 text-[11px] font-black text-red-400 transition hover:bg-red-400/20"
+        @click="deleteModalOpen = true"
+      >
+        <Trash2 class="h-3.5 w-3.5" />
+        Eliminar sede
+      </button>
+    </section>
 
     <UModal
       v-model:open="deleteModalOpen"

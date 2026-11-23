@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import {
   Activity as ActivityIcon,
+  Clock,
   DoorClosed,
   DoorOpen,
+  Eye,
   Layers,
   MapPin,
   Plus,
@@ -18,27 +20,8 @@ const activities = ref<Activity[]>([]);
 const pending = ref(true);
 
 const branchFilter = ref<'todas' | 'OPEN' | 'CLOSED' | 'busy'>('todas');
-
-const createModalOpen = ref(false);
-const creating = ref(false);
-const createError = ref<string | null>(null);
-
-const createForm = ref({
-  name: '',
-  address: '',
-  lat: '',
-  lng: '',
-  imageUrl: '',
-  maxCapacity: 100,
-  openTime: '06:00',
-  closeTime: '22:00',
-  status: 'OPEN' as Branch['status'],
-});
-
-function parseCoord(raw: string): number | null {
-  const value = Number(raw.trim());
-  return raw.trim() !== '' && Number.isFinite(value) ? value : null;
-}
+const selectedBranch = ref<string>('todas');
+const search = ref('');
 
 const confirmOpen = ref(false);
 const confirmTitle = ref('');
@@ -81,16 +64,21 @@ const closedCount = computed(
 );
 
 const filteredBranches = computed(() => {
-  switch (branchFilter.value) {
-    case 'OPEN':
-      return branches.value.filter((b) => b.status === 'OPEN');
-    case 'CLOSED':
-      return branches.value.filter((b) => b.status === 'CLOSED');
-    case 'busy':
-      return branches.value.filter((b) => occupancy(b) > 0.8);
-    default:
-      return branches.value;
-  }
+  const q = search.value.trim().toLowerCase();
+  return branches.value.filter((b) => {
+    if (selectedBranch.value !== 'todas' && b.id !== selectedBranch.value) {
+      return false;
+    }
+    if (branchFilter.value === 'OPEN' && b.status !== 'OPEN') return false;
+    if (branchFilter.value === 'CLOSED' && b.status !== 'CLOSED') return false;
+    if (branchFilter.value === 'busy' && occupancy(b) <= 0.8) return false;
+    if (q) {
+      const matchName = b.name.toLowerCase().includes(q);
+      const matchAddress = (b.address || '').toLowerCase().includes(q);
+      if (!matchName && !matchAddress) return false;
+    }
+    return true;
+  });
 });
 
 function toggleBranchFilter(
@@ -166,54 +154,6 @@ function toggleBranchStatus(branch: Branch): void {
       });
       const index = branches.value.findIndex((b) => b.id === branch.id);
       if (index !== -1) branches.value[index] = updated;
-    },
-  );
-}
-
-function submitBranch(): void {
-  if (createForm.value.name.trim().length < 3) {
-    createError.value = 'El nombre es obligatorio (mín. 3 caracteres)';
-    return;
-  }
-  if (createForm.value.maxCapacity < 1) {
-    createError.value = 'El ocupación máximo debe ser al menos 1';
-    return;
-  }
-  createError.value = null;
-  askConfirm(
-    'Crear sede',
-    `Se creará la sede "${createForm.value.name.trim()}" con ocupación máximo ${createForm.value.maxCapacity} y horario ${createForm.value.openTime}–${createForm.value.closeTime}. ${createForm.value.status === 'OPEN' ? 'Quedará abierta al público.' : 'Quedará cerrada hasta que se active.'}`,
-    async () => {
-      creating.value = true;
-      try {
-        const branch = await $api<Branch>('/api/branches', {
-          method: 'POST',
-          body: {
-            ...createForm.value,
-            name: createForm.value.name.trim(),
-            lat: parseCoord(createForm.value.lat),
-            lng: parseCoord(createForm.value.lng),
-          },
-        });
-        branches.value.push(branch);
-        createForm.value = {
-          name: '',
-          address: '',
-          lat: '',
-          lng: '',
-          imageUrl: '',
-          maxCapacity: 100,
-          openTime: '06:00',
-          closeTime: '22:00',
-          status: 'OPEN',
-        };
-        createModalOpen.value = false;
-      } catch (cause) {
-        createError.value =
-          cause instanceof Error ? cause.message : 'No se pudo crear la sede';
-      } finally {
-        creating.value = false;
-      }
     },
   );
 }
@@ -314,288 +254,185 @@ function submitBranch(): void {
       </button>
     </div>
 
+    <!-- Filtro por sede + descripción -->
     <section>
-      <div class="mb-3 flex items-center justify-between">
-        <h2
-          class="text-sm font-black uppercase tracking-widest text-text-muted"
-        >
-          Sedes
-        </h2>
+      <h2
+        class="mb-3 text-sm font-black uppercase tracking-widest text-text-muted"
+      >
+        Red de sucursales y vista de aforo en tiempo real
+      </h2>
+      <div class="flex flex-wrap gap-2">
         <button
-          v-if="isAdmin"
-          class="flex cursor-pointer items-center gap-1.5 rounded-full bg-accent px-4 py-1.5 text-[11px] font-black text-base transition hover:opacity-90"
-          @click="createModalOpen = true"
+          class="cursor-pointer rounded-full border px-4 py-1.5 text-xs font-bold transition"
+          :class="
+            selectedBranch === 'todas'
+              ? 'border-accent bg-accent/15 text-accent'
+              : 'border-stroke bg-surface text-text-dim hover:text-text-muted'
+          "
+          @click="selectedBranch = 'todas'"
         >
-          <Plus class="h-3.5 w-3.5" />
-          Nueva sede
+          Todas
+        </button>
+        <button
+          v-for="branch in branches"
+          :key="branch.id"
+          class="cursor-pointer rounded-full border px-4 py-1.5 text-xs font-bold transition"
+          :class="
+            selectedBranch === branch.id
+              ? 'border-accent bg-accent/15 text-accent'
+              : 'border-stroke bg-surface text-text-dim hover:text-text-muted'
+          "
+          @click="selectedBranch = branch.id"
+        >
+          {{ branch.name }}
         </button>
       </div>
-      <div class="overflow-hidden rounded-2xl border border-stroke bg-surface">
-        <table class="w-full text-left">
-          <thead>
-            <tr
-              class="border-b border-stroke text-[10px] uppercase tracking-widest text-text-dim"
-            >
-              <th class="px-5 py-3 font-bold">Sede</th>
-              <th class="px-5 py-3 font-bold">Estado</th>
-              <th class="px-5 py-3 font-bold">Horario</th>
-              <th class="px-5 py-3 font-bold">Espacios</th>
-              <th class="px-5 py-3 font-bold">Ocupación</th>
-              <th class="px-5 py-3 font-bold">Ocupación</th>
-              <th class="px-5 py-3 text-right font-bold">Activa</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="branch in filteredBranches"
-              :key="branch.id"
-              class="border-t border-stroke"
-            >
-              <td class="px-5 py-3">
-                <div class="flex items-center gap-3">
-                  <img
-                    :src="branch.imageUrl"
-                    :alt="branch.name"
-                    class="h-10 w-16 rounded-lg border border-stroke object-cover"
-                  />
-                  <div class="min-w-0">
-                    <button
-                      class="cursor-pointer text-xs font-black text-text-primary transition hover:text-accent hover:underline"
-                      @click="navigateTo(`/sedes/${branch.id}`)"
-                    >
-                      {{ branch.name }}
-                    </button>
-                    <p
-                      class="mt-0.5 flex items-center gap-1 truncate text-[10px] text-text-dim"
-                    >
-                      <MapPin class="h-3 w-3 shrink-0" />
-                      {{ branch.address }}
-                    </p>
-                  </div>
-                </div>
-              </td>
-              <td class="px-5 py-3">
-                <span class="flex items-center gap-1.5">
-                  <span
-                    class="h-1.5 w-1.5 rounded-full"
-                    :class="
-                      branch.status === 'OPEN' ? 'bg-emerald-400' : 'bg-red-400'
-                    "
-                  />
-                  <span
-                    class="text-[10px] font-bold uppercase tracking-widest"
-                    :class="
-                      branch.status === 'OPEN'
-                        ? 'text-emerald-400'
-                        : 'text-red-400'
-                    "
-                  >
-                    {{ branch.status === 'OPEN' ? 'Abierta' : 'Cerrada' }}
-                  </span>
-                </span>
-              </td>
-              <td class="px-5 py-3 font-mono text-[11px] text-text-muted">
-                {{ toTime(branch.openMinutes) }}–{{ toTime(branch.closeMinutes) }}
-              </td>
-              <td class="px-5 py-3 text-sm font-bold text-text-primary">
-                {{ activitiesAt(branch.id) }}
-              </td>
-              <td class="px-5 py-3">
-                <p class="text-[11px] font-bold text-text-primary">
-                  {{ branch.currentCapacity }}/{{ branch.maxCapacity }}
-                </p>
-                <div
-                  class="mt-1 h-1.5 w-24 overflow-hidden rounded-full bg-base"
-                >
-                  <div
-                    class="h-full rounded-full"
-                    :class="barColor(occupancy(branch))"
-                    :style="{
-                      width: `${Math.min(100, Math.round(occupancy(branch) * 100))}%`,
-                    }"
-                  />
-                </div>
-              </td>
-              <td class="px-5 py-3">
-                <span
-                  class="rounded-full border px-2.5 py-0.5 text-[10px] font-black"
-                  :class="occupancyCls(occupancy(branch))"
-                >
-                  {{ Math.round(occupancy(branch) * 100) }}%
-                </span>
-              </td>
-              <td class="px-5 py-3 text-right">
-                <button
-                  :disabled="!canEditBranch(branch.id)"
-                  class="relative inline-flex h-6 w-11 rounded-full align-middle transition disabled:cursor-not-allowed disabled:opacity-50"
-                  :class="
-                    branch.status === 'OPEN'
-                      ? 'bg-accent'
-                      : 'bg-base border border-stroke'
-                  "
-                  :title="
-                    canEditBranch(branch.id)
-                      ? branch.status === 'OPEN'
-                        ? 'Cerrar sede'
-                        : 'Abrir sede'
-                      : 'Solo el admin o el gerente de esta sede'
-                  "
-                  @click="canEditBranch(branch.id) && toggleBranchStatus(branch)"
-                >
-                  <span
-                    class="absolute top-0.5 h-5 w-5 rounded-full transition-all"
-                    :class="
-                      branch.status === 'OPEN'
-                        ? 'left-[22px] bg-base'
-                        : 'left-0.5 bg-white'
-                    "
-                  />
-                </button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-        <p
-          v-if="!pending && filteredBranches.length === 0"
-          class="py-8 text-center text-xs font-semibold text-text-dim"
-        >
+    </section>
+
+    <!-- Buscador + Contador + Nueva sede -->
+    <div class="flex items-center gap-4">
+      <UInput
+        v-model="search"
+        icon="i-lucide-search"
+        placeholder="Buscar por nombre o dirección…"
+        class="w-full max-w-sm"
+        size="lg"
+      />
+      <span
+        class="rounded-full border border-stroke bg-surface px-3 py-1 text-[11px] font-bold text-text-muted"
+      >
+        {{ filteredBranches.length }} sedes
+      </span>
+      <button
+        v-if="isAdmin"
+        class="ml-auto flex cursor-pointer items-center gap-1.5 rounded-full bg-accent px-4 py-1.5 text-[11px] font-black text-base transition hover:opacity-90"
+        @click="navigateTo('/sedes/nuevo')"
+      >
+        <Plus class="h-3.5 w-3.5" />
+        Nueva sede
+      </button>
+    </div>
+
+    <section>
+      <div
+        v-if="!pending && filteredBranches.length === 0"
+        class="rounded-2xl border border-stroke bg-surface p-12 text-center"
+      >
+        <MapPin class="mx-auto h-12 w-12 text-text-muted/60" />
+        <h3 class="mt-4 text-base font-semibold text-white">
           {{
             branchFilter === 'todas'
               ? 'Sin sedes registradas'
               : 'Sin sedes en este filtro'
           }}
+        </h3>
+        <p class="mt-1 text-xs text-text-muted">
+          No hay sucursales que coincidan con el filtro seleccionado.
         </p>
       </div>
-    </section>
 
-    <UModal
-      v-model:open="createModalOpen"
-      title="Nueva sede"
-      description="Se agregará al catálogo y quedará disponible para asignar espacios, anfitriones y miembros."
-    >
-      <template #body>
-        <form class="space-y-3" @submit.prevent="submitBranch()">
-          <input
-            v-model="createForm.name"
-            type="text"
-            placeholder="Nombre de la sede"
-            class="w-full rounded-xl border border-stroke bg-base px-4 py-2.5 text-sm text-text-primary outline-none transition placeholder:text-text-dim focus:border-accent"
-          />
-          <input
-            v-model="createForm.address"
-            type="text"
-            placeholder="Dirección"
-            class="w-full rounded-xl border border-stroke bg-base px-4 py-2.5 text-sm text-text-primary outline-none transition placeholder:text-text-dim focus:border-accent"
-          />
-          <div class="grid grid-cols-2 gap-3">
-            <input
-              v-model="createForm.lat"
-              type="text"
-              inputmode="decimal"
-              placeholder="Latitud (ej. 19.2926)"
-              class="w-full rounded-xl border border-stroke bg-base px-4 py-2.5 text-sm text-text-primary outline-none transition placeholder:text-text-dim focus:border-accent"
+      <div v-else class="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+        <div
+          v-for="branch in filteredBranches"
+          :key="branch.id"
+          class="group flex flex-col overflow-hidden rounded-2xl border border-stroke bg-surface transition hover:border-accent/40"
+        >
+          <!-- Cabecera de foto y badges superiores -->
+          <div class="relative h-48 w-full overflow-hidden bg-base">
+            <img
+              :src="branch.imageUrl || 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=1600&q=80'"
+              :alt="branch.name"
+              class="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+              loading="lazy"
             />
-            <input
-              v-model="createForm.lng"
-              type="text"
-              inputmode="decimal"
-              placeholder="Longitud (ej. -99.6572)"
-              class="w-full rounded-xl border border-stroke bg-base px-4 py-2.5 text-sm text-text-primary outline-none transition placeholder:text-text-dim focus:border-accent"
-            />
-          </div>
-          <ImagePicker
-            v-model="createForm.imageUrl"
-            label="Subir imagen de la sede (opcional)"
-            @error="createError = $event"
-          />
-          <div class="grid grid-cols-3 gap-3">
-            <label class="block">
+            <div class="absolute inset-0 bg-gradient-to-t from-base via-transparent to-black/40" />
+
+            <!-- Badge Estado (Abierta / Cerrada) -->
+            <div class="absolute top-3 left-3">
               <span
-                class="text-[10px] font-bold uppercase tracking-widest text-text-dim"
-              >
-                Ocupación máx.
-              </span>
-              <input
-                v-model.number="createForm.maxCapacity"
-                type="number"
-                min="1"
-                class="mt-1 w-full rounded-xl border border-stroke bg-base px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
-              />
-            </label>
-            <label class="block">
-              <span
-                class="text-[10px] font-bold uppercase tracking-widest text-text-dim"
-              >
-                Abre
-              </span>
-              <input
-                v-model="createForm.openTime"
-                type="time"
-                class="mt-1 w-full rounded-xl border border-stroke bg-base px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
-              />
-            </label>
-            <label class="block">
-              <span
-                class="text-[10px] font-bold uppercase tracking-widest text-text-dim"
-              >
-                Cierra
-              </span>
-              <input
-                v-model="createForm.closeTime"
-                type="time"
-                class="mt-1 w-full rounded-xl border border-stroke bg-base px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
-              />
-            </label>
-          </div>
-          <div class="flex items-center justify-between">
-            <span class="text-[11px] font-bold text-text-muted">
-              Sede abierta al público
-            </span>
-            <button
-              type="button"
-              class="relative h-6 w-11 cursor-pointer rounded-full transition"
-              :class="
-                createForm.status === 'OPEN'
-                  ? 'bg-accent'
-                  : 'bg-base border border-stroke'
-              "
-              @click="
-                createForm.status =
-                  createForm.status === 'OPEN' ? 'CLOSED' : 'OPEN'
-              "
-            >
-              <span
-                class="absolute top-0.5 h-5 w-5 rounded-full transition-all"
+                class="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold backdrop-blur-md"
                 :class="
-                  createForm.status === 'OPEN'
-                    ? 'left-[22px] bg-base'
-                    : 'left-0.5 bg-white'
+                  branch.status === 'OPEN'
+                    ? 'border-emerald-400/30 bg-emerald-950/60 text-emerald-400'
+                    : 'border-red-500/30 bg-red-950/60 text-red-400'
                 "
-              />
-            </button>
+              >
+                <span
+                  class="h-2 w-2 rounded-full"
+                  :class="branch.status === 'OPEN' ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'"
+                />
+                {{ branch.status === 'OPEN' ? 'Abierta' : 'Cerrada' }}
+              </span>
+            </div>
+
           </div>
-          <p v-if="createError" class="text-[11px] font-bold text-red-400">
-            {{ createError }}
-          </p>
-        </form>
-      </template>
-      <template #footer>
-        <div class="flex w-full justify-end gap-2">
-          <UButton
-            label="Cancelar"
-            color="neutral"
-            variant="outline"
-            @click="createModalOpen = false"
-          />
-          <UButton
-            label="Crear sede"
-            icon="i-lucide-plus"
-            :loading="creating"
-            @click="submitBranch"
-          />
+
+          <!-- Contenido de la sede -->
+          <div class="flex flex-1 flex-col p-5">
+            <!-- Pills de atributos debajo de la foto -->
+            <div class="mb-3 flex flex-wrap gap-2">
+              <span class="inline-flex items-center gap-1.5 rounded-md border border-stroke bg-surface-elevated px-2.5 py-1 text-xs text-text-secondary">
+                {{ activitiesAt(branch.id) }} eventos programados
+              </span>
+              <span class="inline-flex items-center gap-1.5 rounded-md border border-stroke bg-surface-elevated px-2.5 py-1 text-xs text-text-secondary">
+                <Clock class="h-3.5 w-3.5 text-accent" />
+                {{ toTime(branch.openMinutes) }} - {{ toTime(branch.closeMinutes) }}
+              </span>
+              <span
+                v-if="occupancy(branch) > 0.8"
+                class="inline-flex items-center gap-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs font-semibold text-amber-400"
+              >
+                Ocupación alta
+              </span>
+            </div>
+
+            <div>
+              <button
+                type="button"
+                class="cursor-pointer text-left text-base font-bold text-white transition group-hover:text-accent hover:underline"
+                @click="navigateTo(`/sedes/${branch.id}`)"
+              >
+                {{ branch.name }}
+              </button>
+              <p class="mt-1 flex items-center gap-1.5 text-xs text-text-dim">
+                <MapPin class="h-3.5 w-3.5 text-accent shrink-0" />
+                <span class="truncate">{{ branch.address || 'Sin dirección registrada' }}</span>
+              </p>
+            </div>
+
+            <!-- Barra de progreso de aforo en vivo -->
+            <div class="mt-4 space-y-1.5">
+              <div class="flex items-center justify-between text-xs text-text-muted">
+                <span>Ocupación actual</span>
+                <span class="font-semibold text-white">
+                  {{ branch.currentCapacity }} / {{ branch.maxCapacity }} presentes
+                </span>
+              </div>
+              <div class="h-2 w-full overflow-hidden rounded-full bg-base border border-stroke/40">
+                <div
+                  class="h-full rounded-full transition-all duration-500"
+                  :class="barColor(occupancy(branch))"
+                  :style="{
+                    width: `${Math.min(100, Math.round(occupancy(branch) * 100))}%`,
+                  }"
+                />
+              </div>
+            </div>
+
+            <!-- Footer con acciones -->
+            <div class="mt-auto pt-5 flex items-center justify-end border-t border-stroke/50 gap-2">
+              <NuxtLink
+                :to="`/sedes/${branch.id}`"
+                class="inline-flex items-center gap-1.5 rounded-lg border border-stroke bg-surface-elevated px-3 py-1.5 text-xs font-medium text-white transition hover:border-accent hover:text-accent cursor-pointer"
+              >
+                <Eye class="h-3.5 w-3.5" />
+                Ver detalle
+              </NuxtLink>
+            </div>
+          </div>
         </div>
-      </template>
-    </UModal>
+      </div>
+    </section>
 
     <UModal
       v-model:open="confirmOpen"

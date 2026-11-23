@@ -8,6 +8,10 @@ rol/sede server-side (`server/utils/staff-auth.ts`).
 Repo hermano — app del miembro (Flutter):
 `/Users/luis/Develop/Personal/cowhub-app` (tiene su propio `AGENTS.md` con las reglas de arquitectura y el estándar obligatorio de **Estética Luxury tipo Spotify + Micro-interacciones hápticas**: `PressableScale`, `AppHaptics`, halos de luz ambiental, barra `BackdropFilter` y casillas táctiles de PIN).
 
+Repo hermano — web de reservas y toma de órdenes (Nuxt 4 + Tailwind v4):
+`/Users/venta/Develop/PERSONAL/cowhub-book` (sitio público customer-facing en puerto :3100; toma órdenes de reservas y tours; consume `/api/public/*` del B2B).
+**Regla de Oro de Datos (Book ➔ B2B)**: Los datos curados en `cowhub-book` (salas, fotos, capacidades, precios de membresías y contacto) son la fuente de verdad inicial y se transfieren hacia Firestore en el B2B mediante `scripts/sync-from-book.mjs`, NUNCA al revés. Prohibido sobreescribir con datos vacíos o default obsoletos.
+
 **Modelo de negocio**: un proyecto Firebase = un negocio con varias sedes.
 No existe `brand_id` operativo; el branding vive en `/config/brand`.
 Timezone del negocio: `America/Mexico_City` — todas las fechas de
@@ -22,6 +26,67 @@ ocurrencia (`activity_date`, dailyStats) se calculan en esa TZ.
 - **PROHIBIDO el guion largo `—` (em-dash) en cualquier texto visible de la UI** (templates, labels, mensajes, toasts, placeholders). Usar `·` como separador de metadatos, `:` para introduce, o `-` simple. Ya se hizo barrido global; no reintroducirlo.
 - **TODA acción que modifique estado o datos destructivos pasa por modal de confirmación** (`UModal`): selects de estado, botones de confirmar acceso, desactivar/eliminar, cambiar sedes, etc. El patrón es `pendingAction` + `confirmOpen`: el control NUNCA escribe directo en Firestore; al confirmar se ejecuta el `updateDoc`/`deleteDoc`, y al cancelar los selects se remontan (`selectReset`) para volver a mostrar el valor real. Referencia: `app/pages/index.vue` y `app/pages/agenda-web.vue`.
 - **TODO elemento clickeable muestra `cursor: pointer`**: cubierto globalmente en `app/assets/css/main.css` para `button`, `a[href]`, roles ARIA interactivos, `select`, `summary`, `label[for]` y controles de formulario; los deshabilitados muestran `not-allowed`. NO quitar ni sobreescribir ese cursor en elementos clickeables, y si se crea un elemento clickeable no semántico (div/span con `@click`) agregarle `cursor-pointer` manualmente.
+
+## 🎨 Estándar Obligatorio de UI / Sistema de Diseño (Luxury Dark UI)
+
+Toda nueva vista o ajuste en `cowhub-b2b` debe respetar estrictamente los siguientes 4 patrones de interfaz:
+
+### 1. Patrón de Cards para Sucursales / Entidades Físicas (`/sedes`)
+- **Filtros KPI superiores**: `grid grid-cols-2 gap-4 lg:grid-cols-4` con tarjetas interactivas de filtro rápido.
+- **Encabezado descriptivo + Filtro por sede + Barra de herramientas**:
+  - El título `<h2 class="mb-3 text-sm font-black uppercase tracking-widest text-text-muted">` lleva directamente la descripción de la vista (ej. *"Red de sucursales y vista de aforo en tiempo real"*), seguido inmediatamente por los botones pill de sedes (`Todas` + cada sede), **sin párrafo descriptivo adicional debajo**.
+  - Barra de herramientas con buscador `<UInput>`, badge contador `N sedes` inmediatamente después del input, y botón `+ Nueva sede` con `ml-auto`.
+- **Contenedor de Card**: `group flex flex-col overflow-hidden rounded-2xl border border-stroke bg-surface transition hover:border-accent/40` dentro de `grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5`.
+- **Cabecera Multimedia (`relative h-48 w-full overflow-hidden bg-base`)**:
+  - Imagen con zoom suave (`group-hover:scale-105`) y degradado (`bg-gradient-to-t from-base via-transparent to-black/40`).
+  - Solo badges flotantes en la parte superior (`top-3`): izquierda para estado (`Abierta`/`Cerrada` con dot pulsante) y derecha para `% ocupación`. **No poner pills de aforo ni horario sobre la foto**.
+- **Cuerpo de la Card (`flex flex-1 flex-col p-5`)**:
+  - **Badges de atributos inmediatamente debajo de la foto y arriba del nombre**: pills `rounded-md border border-stroke bg-surface-elevated px-2.5 py-1 text-xs text-text-secondary` (ej. `N eventos programados`, horario con icono `Clock` y alerta `Ocupación alta` si `>80%`).
+  - **Nombre y ubicación**: Nombre clickeable hacia `/<seccion>/${id}` (`text-base font-bold text-white group-hover:text-accent hover:underline`) y dirección debajo con icono `MapPin`.
+  - **Barra de progreso**: Ocupación en vivo con semáforo (`<50%` esmeralda, `50-80%` ámbar, `>80%` rojo).
+- **Footer de la Card (`mt-auto pt-5 flex items-center justify-end border-t border-stroke/50`)**:
+  - **Limpio, únicamente con el botón `"Ver detalle"` (`Eye`)** alineado a la derecha. No colocar botones de *"Cerrar sede"* ni switches destructivos en la tarjeta (eso vive en la vista de detalle `/<seccion>/[id]`).
+
+### 2. Patrón de Listado Tabular de Catálogo (`/salas`, `/miembros`)
+- **4 Tarjetas KPI superiores**: Filtros rápidos por estado/categoría (`grid grid-cols-2 gap-4 lg:grid-cols-4`).
+- **Encabezado descriptivo + Filtro por sede**:
+  - El `<h2 class="mb-3 text-sm font-black uppercase tracking-widest text-text-muted">` contiene directamente la descripción de la sección como título (ej. *"Catálogo de espacios de trabajo por sede"*), seguido únicamente por los botones pill (`rounded-full border px-4 py-1.5 text-xs font-bold`) para `Todas` y cada sede (**sin párrafo extra debajo de los pills**).
+- **Barra de herramientas (`flex items-center gap-4`) en este orden exacto**:
+  1. Buscador `<UInput>` (`w-full max-w-sm size="lg"`).
+  2. **Badge contador inmediatamente después del input de búsqueda**: `rounded-full border border-stroke bg-surface px-3 py-1 text-[11px] font-bold text-text-muted` (ej. `6 salas`, `24 miembros`).
+  3. Botón primario de creación alineado al extremo derecho (`ml-auto flex cursor-pointer items-center gap-1.5 rounded-full bg-accent px-4 py-1.5 text-[11px] font-black text-base`, ej. `+ Nueva sala`).
+- **Tabla paginada (`overflow-hidden rounded-2xl border border-stroke bg-surface`)**:
+  - Primera columna con miniatura (`h-10 w-14 rounded-lg border border-stroke object-cover`) o `MemberAvatar`, nombre clickeable hacia `/<seccion>/${id}` y subtítulo truncado.
+  - **Badges de destacado (`featured`) sin texto**: usar únicamente el contenedor circular con el icono (`inline-flex h-5 w-5 items-center justify-center rounded-full border border-amber-400/30 bg-amber-400/10 text-amber-400` con `<Sparkles class="h-2.5 w-2.5" />` y `title` descriptivo).
+  - Columna de Sede con pills navegables hacia `/sedes/${branchId}`.
+  - Columna derecha de Estado con pill semántico (`ACTIVA` en esmeralda, `INACTIVA`/`VENCIDA` en rojo).
+  - Footer de paginación (`pageSize = 8`) con resumen `N registros · página X de Y` y botones `ChevronLeft`/`ChevronRight`.
+
+### 3. Patrón de Vistas de Alta / Creación (`/<seccion>/nuevo`)
+- **PROHIBIDO usar modales para formularios de alta de entidades** (`/sedes/nuevo`, `/salas/nuevo`, `/miembros/nuevo`, `/anfitriones/nuevo`, `/membresias/nuevo`).
+- Estructura obligatoria:
+  - Botón superior `Volver` (`router.back()`) con icono `ArrowLeft`.
+  - Encabezado `h1` (`text-xl font-black text-text-primary`) y descripción (`text-[11px] text-text-dim`).
+  - Secciones agrupadas en `<section class="rounded-2xl border border-stroke bg-surface p-5">` con título precedido por barra vertical de acento (`<span class="h-4 w-1 rounded-full bg-accent" />`).
+  - Botón de envío de ancho completo (`flex h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-accent text-xs font-black text-base`).
+  - `UModal` exclusivo para la confirmación final antes de ejecutar el `POST` y redirigir a `/<seccion>/${id}`.
+
+### 4. Patrón de Vistas de Detalle y Edición (`/<seccion>/[id]`)
+- Botón superior `Volver` (`ArrowLeft`).
+- Cabecera con miniatura (`h-20 w-28 rounded-2xl border border-stroke object-cover`), título `h1`, metadatos separados por `·`, indicador de estado con dot, y a la derecha el botón de acción de estado (`Power`: *Cerrar/Abrir sede*, *Desactivar/Activar sala*) con confirmación en `UModal`.
+- Tarjeta de información en modo lectura por defecto con botón `Editar` (`Pencil`) en la esquina superior derecha; al editar muestra formulario inline con botones `Cancelar` y `Guardar` (con confirmación en `UModal`).
+- Las secciones de actividades de una sede se denominan **"Próximos eventos"** (y en las cards **"eventos programados"**), asociados a una Sala y a una Sede.
+- **Tarjeta de Eliminación / Zona de Peligro al final de la vista (`Eliminar <entidad>`)**:
+  - Nunca usar un botón suelto de ancho completo; siempre usar una tarjeta contenedora:
+    `<section v-if="isAdmin" class="flex items-center justify-between rounded-2xl border border-red-400/30 bg-red-400/5 p-5">`
+  - A la izquierda: título `<h3 class="text-xs font-black uppercase tracking-widest text-red-400">Eliminar <entidad></h3>` y descripción `<p class="mt-0.5 text-[11px] text-text-dim">...</p>`.
+  - A la derecha: botón pill `<button type="button" class="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-red-400/40 bg-red-400/10 px-4 py-1.5 text-[11px] font-black text-red-400 transition hover:bg-red-400/20">` con icono `<Trash2 class="h-3.5 w-3.5" />` que abre el `UModal` de confirmación.
+
+### 5. Reglas Estrictas de Interacción
+- **PROHIBIDO sombras (`shadow-*`, `box-shadow`, `drop-shadow`) en botones**.
+- **PROHIBIDO el guion largo `—` (em-dash)**. Usar `·`, `:`, o `-`.
+- **TODO elemento clickeable debe mostrar `cursor: pointer`**.
+- **TODA mutación de estado o acción destructiva pasa por modal de confirmación (`UModal`)**.
 
 ## Comandos
 
@@ -123,6 +188,7 @@ Sin vínculo no ve datos del centro.
 
 ### Agenda web pública (reservas de espacios + tours)
 
+- **Coexistencia con cowhub-book**: el frontend de toma de órdenes corre en :3100 (`PORT=3100 npm run dev`) y consume `/api/public/spaces`, `/api/public/spaces/:id?date=`, `POST /api/public/bookings` y `POST /api/public/tours`. Si Firestore está vacío, el backend del B2B recurre a `DEFAULT_BOOKABLE_SPACES` (`shared/data/default-spaces.ts`) para no vaciar la UI de la web.
 - `space_bookings/{id}` y `tour_requests/{id}` los escribe solo el backend
   público (`/api/public/*`, consumido por cowhub-book); staff solo hace
   `update` de status desde el B2B (`firestore.rules`: `isStaff`).

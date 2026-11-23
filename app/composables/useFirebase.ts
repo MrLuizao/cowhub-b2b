@@ -30,7 +30,18 @@ export function useFirebase(): FirebaseContext {
   let app: FirebaseApp | null = null;
   if (raw) {
     try {
-      const opts = typeof raw === 'string' ? (JSON.parse(raw) as Record<string, string>) : raw;
+      let opts: Record<string, string>;
+      if (typeof raw === 'string') {
+        const trimmed = raw.trim();
+        const jsonStr = trimmed.startsWith('{')
+          ? trimmed
+          : typeof atob === 'function'
+            ? atob(trimmed)
+            : Buffer.from(trimmed, 'base64').toString('utf8');
+        opts = JSON.parse(jsonStr) as Record<string, string>;
+      } else {
+        opts = raw;
+      }
       app = getApps()[0] ?? initializeApp(opts);
     } catch {
       app = null;

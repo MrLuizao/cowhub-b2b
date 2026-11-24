@@ -850,7 +850,7 @@ export interface SpaceBooking {
   };
   people: number;
   totalMxn: number;
-  status: 'confirmed' | 'cancelled' | 'completed' | 'no_show';
+  status: 'pending' | 'confirmed' | 'cancelled' | 'completed' | 'no_show';
   source: 'web' | 'b2b';
   notes: string | null;
   /// Sello de acceso confirmado en recepción (folio validado).

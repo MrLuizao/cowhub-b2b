@@ -37,6 +37,7 @@ const pageSize = 8;
 const savingId = ref<string | null>(null);
 
 const BOOKING_STATUSES = [
+  { value: 'pending', label: 'Por confirmar' },
   { value: 'confirmed', label: 'Vigente' },
   { value: 'completed', label: 'Completada' },
   { value: 'no_show', label: 'No show' },
@@ -208,8 +209,14 @@ type PendingAction = {
 };
 
 const pendingAction = ref<PendingAction | null>(null);
+const actionReason = ref('');
 const actionBusy = ref(false);
 const selectReset = ref(0);
+
+const reasonRequired = computed(() => {
+  const v = pendingAction.value?.toValue;
+  return v === 'cancelled' || v === 'no_show';
+});
 
 const confirmOpen = computed({
   get: () => pendingAction.value !== null,
@@ -237,9 +244,8 @@ function bookingStatusLocked(b: SpaceBooking): boolean {
   return b.status === 'completed' && !canEditCompleted.value;
 }
 
-function askBookingStatus(b: SpaceBooking, event: Event): void {
+function askBookingStatus(b: SpaceBooking, status: string): void {
   if (bookingStatusLocked(b)) return;
-  const status = (event.target as HTMLSelectElement).value;
   if (status === b.status) return;
   pendingAction.value = {
     kind: 'booking',
@@ -259,11 +265,10 @@ function askBookingStatus(b: SpaceBooking, event: Event): void {
 function bookingStatusOptions(b: SpaceBooking) {
   return BOOKING_STATUSES.filter(
     (s) => s.value !== 'completed' || b.status === 'completed',
-  );
+  ).map((s) => ({ label: s.label, value: s.value }));
 }
 
-function askTourStatus(t: TourRequest, event: Event): void {
-  const status = (event.target as HTMLSelectElement).value;
+function askTourStatus(t: TourRequest, status: string): void {
   if (status === t.status) return;
   pendingAction.value = {
     kind: 'tour',
@@ -280,11 +285,18 @@ function askTourStatus(t: TourRequest, event: Event): void {
 async function applyPendingAction(): Promise<void> {
   const a = pendingAction.value;
   if (!a || actionBusy.value) return;
+  const reason = actionReason.value.trim();
+  if (reasonRequired.value && !reason) return;
   actionBusy.value = true;
   savingId.value = a.id;
   try {
+    const auditFields = {
+      ...(reason ? { notes: reason } : {}),
+      status_updated_by: session.value?.name || session.value?.email || 'Staff',
+      status_updated_at: Date.now(),
+    };
     if (a.kind === 'booking') {
-      const patch: Record<string, unknown> = { status: a.toValue };
+      const patch: Record<string, unknown> = { status: a.toValue, ...auditFields };
       if (a.toValue !== 'completed') {
         const current = bookings.value.find((b) => b.id === a.id);
         if (current?.checkedInAt || current?.checkedInBy) {
@@ -294,9 +306,17 @@ async function applyPendingAction(): Promise<void> {
       }
       await updateDoc(doc(db!, 'space_bookings', a.id), patch);
     } else {
-      await updateDoc(doc(db!, 'tour_requests', a.id), { status: a.toValue });
+      await updateDoc(doc(db!, 'tour_requests', a.id), {
+        status: a.toValue,
+        ...auditFields,
+      });
     }
+    $api('/api/agenda-web/notify-status', {
+      method: 'POST',
+      body: { kind: a.kind, id: a.id, status: a.toValue, reason: reason || undefined },
+    }).catch(() => {});
     pendingAction.value = null;
+    actionReason.value = '';
   } finally {
     actionBusy.value = false;
     savingId.value = null;
@@ -305,10 +325,15 @@ async function applyPendingAction(): Promise<void> {
 
 function cancelPendingAction(): void {
   pendingAction.value = null;
+  actionReason.value = '';
   selectReset.value += 1;
 }
 
 const statusMeta: Record<string, { cls: string; dot: string }> = {
+  pending: {
+    cls: 'border-amber-500/35 bg-amber-500/15 text-amber-400',
+    dot: 'bg-amber-500',
+  },
   confirmed: {
     cls: 'border-accent/35 bg-accent/15 text-accent',
     dot: 'bg-accent',
@@ -508,16 +533,18 @@ const statusMeta: Record<string, { cls: string; dot: string }> = {
               >
                 <Lock class="h-3.5 w-3.5" /> Requiere gerente
               </span>
-              <select
+              <USelect
                 v-else
                 :key="`${b.id}-${selectReset}`"
-                :value="b.status"
+                :model-value="b.status"
+                :items="bookingStatusOptions(b)"
+                value-key="value"
+                label-key="label"
+                size="sm"
                 :disabled="savingId === b.id"
-                class="cursor-pointer rounded-xl border border-stroke bg-base px-3 py-1.5 text-xs font-bold text-text-primary outline-none transition focus:border-accent disabled:opacity-50"
-                @change="askBookingStatus(b, $event)"
-              >
-                <option v-for="s in bookingStatusOptions(b)" :key="s.value" :value="s.value">{{ s.label }}</option>
-              </select>
+                class="w-36 text-left"
+                @update:model-value="(val) => askBookingStatus(b, String(val))"
+              />
             </td>
           </tr>
         </tbody>
@@ -605,15 +632,17 @@ const statusMeta: Record<string, { cls: string; dot: string }> = {
               </span>
             </td>
             <td class="px-5 py-3.5 text-right">
-              <select
+              <USelect
                 :key="`${t.id}-${selectReset}`"
-                :value="t.status"
+                :model-value="t.status"
+                :items="[...TOUR_STATUSES]"
+                value-key="value"
+                label-key="label"
+                size="sm"
                 :disabled="savingId === t.id"
-                class="cursor-pointer rounded-xl border border-stroke bg-base px-3 py-1.5 text-xs font-bold text-text-primary outline-none transition focus:border-accent disabled:opacity-50"
-                @change="askTourStatus(t, $event)"
-              >
-                <option v-for="s in TOUR_STATUSES" :key="s.value" :value="s.value">{{ s.label }}</option>
-              </select>
+                class="w-36 text-left"
+                @update:model-value="(val) => askTourStatus(t, String(val))"
+              />
             </td>
           </tr>
         </tbody>
@@ -664,6 +693,17 @@ const statusMeta: Record<string, { cls: string; dot: string }> = {
           >
             {{ pendingAction.warn }}
           </p>
+          <label class="mt-4 block">
+            <span class="text-[10px] font-bold uppercase tracking-widest text-text-dim">
+              Justificación o nota {{ reasonRequired ? '*' : '(opcional)' }}
+            </span>
+            <textarea
+              v-model="actionReason"
+              rows="2"
+              placeholder="Ej. Confirmado por teléfono / Solicitó reagendar…"
+              class="mt-1.5 w-full rounded-xl border border-stroke bg-base px-3 py-2 text-xs text-text-primary outline-none transition focus:border-accent"
+            />
+          </label>
         </template>
       </template>
       <template #footer>
@@ -672,6 +712,7 @@ const statusMeta: Record<string, { cls: string; dot: string }> = {
           <UButton
             :label="pendingAction?.toLabel ?? 'Confirmar'"
             :loading="actionBusy"
+            :disabled="reasonRequired && !actionReason.trim()"
             color="primary"
             @click="applyPendingAction"
           />

@@ -35,6 +35,7 @@ const agendaPending = ref(true);
 const savingId = ref<string | null>(null);
 
 const BOOKING_STATUSES = [
+  { value: 'pending', label: 'Por confirmar' },
   { value: 'confirmed', label: 'Vigente' },
   { value: 'completed', label: 'Completada' },
   { value: 'no_show', label: 'No show' },
@@ -241,6 +242,7 @@ const pendingTours = computed(() =>
 
 const statusBadge: Record<string, string> = {
   /// Vigente = reserva activa; Completada = acceso ya confirmado en recepción por folio.
+  pending: 'bg-pastel-yellow/15 text-pastel-yellow ring-1 ring-inset ring-pastel-yellow/25',
   confirmed: 'bg-pastel-lavender/15 text-pastel-lavender ring-1 ring-inset ring-pastel-lavender/25',
   completed: 'bg-emerald-300/15 text-emerald-300',
   no_show: 'bg-pastel-yellow/15 text-pastel-yellow ring-1 ring-inset ring-pastel-yellow/25',
@@ -354,6 +356,10 @@ async function applyPendingAction(): Promise<void> {
     } else {
       await updateDoc(doc(db!, 'tour_requests', a.id), { status: a.toValue });
     }
+    $api('/api/agenda-web/notify-status', {
+      method: 'POST',
+      body: { kind: a.kind, id: a.id, status: a.toValue },
+    }).catch(() => {});
     pendingAction.value = null;
   } finally {
     actionBusy.value = false;

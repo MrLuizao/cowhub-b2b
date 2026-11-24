@@ -293,3 +293,200 @@ export async function sendClaimPinEmail(opts: {
   });
   return true;
 }
+
+// ─── Agenda Web Pública (Reservas y Tours desde cowhub-book) ───
+
+function cowhubShell(inner: string): string {
+  return `
+    <div style="font-family:system-ui,-apple-system,sans-serif;max-width:520px;margin:0 auto;background:#120c08;color:#f9f5f1;padding:32px;border-radius:16px;border:1px solid #382b20">
+      <p style="margin:0 0 20px;font-size:12px;letter-spacing:4px;color:#d4a17c;font-weight:700">COWHUB · METEPEC</p>
+      ${inner}
+      <p style="margin:24px 0 0;padding-top:16px;border-top:1px solid #2e231a;color:#8a6f58;font-size:11px;line-height:1.5">
+        Paseo San Isidro 111, Metepec · info@cowhub.mx
+      </p>
+    </div>`;
+}
+
+export async function sendPublicBookingReceivedEmail(opts: {
+  to: string;
+  name: string;
+  folio: string;
+  spaceName: string;
+  date: string;
+  timeLabel: string;
+  people: number;
+  totalMxn: number;
+}): Promise<boolean> {
+  const html = cowhubShell(`
+    <h2 style="margin:0 0 8px;color:#f9f5f1">Recibimos tu solicitud de reserva</h2>
+    <p style="color:#e3d5c5;font-size:14px;line-height:1.6">
+      Hola <strong style="color:#f9f5f1">${opts.name}</strong>, tu solicitud quedó registrada con el folio
+      <strong style="color:#d4a17c">${opts.folio}</strong>. Un miembro de nuestro equipo la confirmará a la brevedad.
+    </p>
+    <div style="background:#1d1610;border:1px solid #382b20;border-radius:12px;padding:16px;margin:20px 0;font-size:13px;line-height:1.8;color:#e3d5c5">
+      <div><strong style="color:#d4a17c">Espacio:</strong> ${opts.spaceName}</div>
+      <div><strong style="color:#d4a17c">Fecha:</strong> ${opts.date}</div>
+      <div><strong style="color:#d4a17c">Horario:</strong> ${opts.timeLabel}</div>
+      <div><strong style="color:#d4a17c">Personas:</strong> ${opts.people}</div>
+      <div><strong style="color:#d4a17c">Total estimado:</strong> $${opts.totalMxn.toLocaleString('es-MX')} MXN</div>
+    </div>
+    <p style="color:#b5a392;font-size:12px;line-height:1.5">
+      Te enviaremos un correo en cuanto el equipo confirme tu acceso.
+    </p>`);
+  return sendMail({
+    to: opts.to,
+    subject: `Solicitud recibida ${opts.folio} - ${opts.spaceName} · COWHUB`,
+    html,
+  });
+}
+
+export async function sendPublicBookingConfirmedEmail(opts: {
+  to: string;
+  name: string;
+  folio: string;
+  spaceName: string;
+  date: string;
+  timeLabel: string;
+  status: 'confirmed' | 'cancelled';
+  reason?: string;
+}): Promise<boolean> {
+  const isConfirmed = opts.status === 'confirmed';
+  const html = cowhubShell(`
+    <h2 style="margin:0 0 8px;color:#f9f5f1">${isConfirmed ? '¡Tu reserva fue confirmada!' : 'Actualización de tu reserva'}</h2>
+    <p style="color:#e3d5c5;font-size:14px;line-height:1.6">
+      Hola <strong style="color:#f9f5f1">${opts.name}</strong>, tu reserva
+      <strong style="color:#d4a17c">${opts.folio}</strong> para
+      <strong style="color:#f9f5f1">${opts.spaceName}</strong> (${opts.date} · ${opts.timeLabel})
+      ${isConfirmed ? 'ha sido <strong style="color:#d4a17c">confirmada</strong> por nuestro equipo. Presenta este folio en recepción al llegar.' : 'fue cancelada. Si necesitas reagendar, contáctanos en info@cowhub.mx.'}
+    </p>
+    ${opts.reason ? `<p style="margin-top:12px;padding:12px;background:#1d1610;border:1px solid #382b20;border-radius:10px;color:#e3d5c5;font-size:13px"><strong style="color:#d4a17c">Nota del equipo:</strong> ${opts.reason}</p>` : ''}`);
+  return sendMail({
+    to: opts.to,
+    subject: `${isConfirmed ? 'Reserva confirmada' : 'Reserva cancelada'} ${opts.folio} - ${opts.spaceName} · COWHUB`,
+    html,
+  });
+}
+
+export async function sendPublicBookingStaffNotice(opts: {
+  to: string;
+  folio: string;
+  spaceName: string;
+  date: string;
+  timeLabel: string;
+  people: number;
+  totalMxn: number;
+  guestName: string;
+  guestEmail: string;
+  guestPhone: string | null;
+  agendaUrl: string;
+}): Promise<boolean> {
+  const html = cowhubShell(`
+    <h2 style="margin:0 0 8px;color:#f9f5f1">Nueva reserva web por confirmar</h2>
+    <p style="color:#e3d5c5;font-size:14px;line-height:1.6">
+      Llegó una nueva reserva desde el sitio público con folio <strong style="color:#d4a17c">${opts.folio}</strong>.
+    </p>
+    <div style="background:#1d1610;border:1px solid #382b20;border-radius:12px;padding:16px;margin:20px 0;font-size:13px;line-height:1.8;color:#e3d5c5">
+      <div><strong style="color:#d4a17c">Espacio:</strong> ${opts.spaceName}</div>
+      <div><strong style="color:#d4a17c">Fecha y horario:</strong> ${opts.date} · ${opts.timeLabel} (${opts.people} pers.)</div>
+      <div><strong style="color:#d4a17c">Total:</strong> $${opts.totalMxn.toLocaleString('es-MX')} MXN</div>
+      <div><strong style="color:#d4a17c">Cliente:</strong> ${opts.guestName} · ${opts.guestEmail}${opts.guestPhone ? ` · ${opts.guestPhone}` : ''}</div>
+    </div>
+    <div style="text-align:center;margin:24px 0">
+      <a href="${opts.agendaUrl}" style="display:inline-block;background:#d4a17c;color:#120c08;font-weight:700;font-size:13px;text-decoration:none;padding:12px 24px;border-radius:999px">Confirmar en Agenda web</a>
+    </div>`);
+  return sendMail({
+    to: opts.to,
+    subject: `[Por confirmar] Reserva ${opts.folio} - ${opts.spaceName}`,
+    html,
+  });
+}
+
+export async function sendPublicTourReceivedEmail(opts: {
+  to: string;
+  name: string;
+  folio: string;
+  preferredDate: string | null;
+  people: number;
+}): Promise<boolean> {
+  const html = cowhubShell(`
+    <h2 style="margin:0 0 8px;color:#f9f5f1">Recibimos tu solicitud de tour</h2>
+    <p style="color:#e3d5c5;font-size:14px;line-height:1.6">
+      Hola <strong style="color:#f9f5f1">${opts.name}</strong>, registramos tu solicitud con el folio
+      <strong style="color:#d4a17c">${opts.folio}</strong>.
+      ${opts.preferredDate ? `Fecha sugerida: <strong style="color:#f9f5f1">${opts.preferredDate}</strong> (${opts.people} pers.).` : `Para ${opts.people} persona(s).`}
+    </p>
+    <p style="color:#b5a392;font-size:13px;line-height:1.5">
+      Un anfitrión de nuestro equipo se pondrá en contacto contigo para confirmar tu visita en COWHUB Metepec.
+    </p>`);
+  return sendMail({
+    to: opts.to,
+    subject: `Solicitud de tour ${opts.folio} · COWHUB`,
+    html,
+  });
+}
+
+export async function sendPublicTourStatusEmail(opts: {
+  to: string;
+  name: string;
+  folio: string;
+  preferredDate: string | null;
+  status: 'contacted' | 'done' | 'cancelled';
+  reason?: string;
+}): Promise<boolean> {
+  const title =
+    opts.status === 'done'
+      ? '¡Tu tour está agendado!'
+      : opts.status === 'contacted'
+        ? 'Seguimiento de tu tour'
+        : 'Actualización de tu solicitud de tour';
+  const body =
+    opts.status === 'done'
+      ? `confirmamos tu visita con el folio <strong style="color:#d4a17c">${opts.folio}</strong>${opts.preferredDate ? ` para el <strong style="color:#f9f5f1">${opts.preferredDate}</strong>` : ''}. Te esperamos en Paseo San Isidro 111, Metepec.`
+      : opts.status === 'contacted'
+        ? `nuestro equipo ya tomó tu solicitud <strong style="color:#d4a17c">${opts.folio}</strong> y está coordinando tu recorrido.`
+        : `tu solicitud de tour <strong style="color:#d4a17c">${opts.folio}</strong> fue cancelada.`;
+  const html = cowhubShell(`
+    <h2 style="margin:0 0 8px;color:#f9f5f1">${title}</h2>
+    <p style="color:#e3d5c5;font-size:14px;line-height:1.6">
+      Hola <strong style="color:#f9f5f1">${opts.name}</strong>, ${body}
+    </p>
+    ${opts.reason ? `<p style="margin-top:12px;padding:12px;background:#1d1610;border:1px solid #382b20;border-radius:10px;color:#e3d5c5;font-size:13px"><strong style="color:#d4a17c">Nota del equipo:</strong> ${opts.reason}</p>` : ''}`);
+  return sendMail({
+    to: opts.to,
+    subject: `${title} ${opts.folio} · COWHUB`,
+    html,
+  });
+}
+
+export async function sendPublicTourStaffNotice(opts: {
+  to: string;
+  folio: string;
+  name: string;
+  company: string | null;
+  email: string;
+  phone: string;
+  preferredDate: string | null;
+  people: number;
+  message: string | null;
+  agendaUrl: string;
+}): Promise<boolean> {
+  const html = cowhubShell(`
+    <h2 style="margin:0 0 8px;color:#f9f5f1">Nueva solicitud de tour por confirmar</h2>
+    <p style="color:#e3d5c5;font-size:14px;line-height:1.6">
+      Llegó un lead de tour desde el sitio público con folio <strong style="color:#d4a17c">${opts.folio}</strong>.
+    </p>
+    <div style="background:#1d1610;border:1px solid #382b20;border-radius:12px;padding:16px;margin:20px 0;font-size:13px;line-height:1.8;color:#e3d5c5">
+      <div><strong style="color:#d4a17c">Solicitante:</strong> ${opts.name}${opts.company ? ` · ${opts.company}` : ''}</div>
+      <div><strong style="color:#d4a17c">Contacto:</strong> ${opts.email} · ${opts.phone}</div>
+      <div><strong style="color:#d4a17c">Preferencia:</strong> ${opts.preferredDate ?? 'Por definir'} (${opts.people} pers.)</div>
+      ${opts.message ? `<div><strong style="color:#d4a17c">Mensaje:</strong> "${opts.message}"</div>` : ''}
+    </div>
+    <div style="text-align:center;margin:24px 0">
+      <a href="${opts.agendaUrl}" style="display:inline-block;background:#d4a17c;color:#120c08;font-weight:700;font-size:13px;text-decoration:none;padding:12px 24px;border-radius:999px">Gestionar en Agenda web</a>
+    </div>`);
+  return sendMail({
+    to: opts.to,
+    subject: `[Nuevo tour] ${opts.folio} - ${opts.name}`,
+    html,
+  });
+}

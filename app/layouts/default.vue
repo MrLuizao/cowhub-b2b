@@ -29,6 +29,12 @@ const route = useRoute();
 const { session, logout, setActiveBranch } = useAuth();
 const { isDark, setTheme } = useTheme();
 const { unreadCount, lastAlert, start, dismissAlert } = useSupportUnread();
+const {
+  pendingCount: agendaPendingCount,
+  lastAlert: agendaAlert,
+  start: startAgendaAlerts,
+  dismissAlert: dismissAgendaAlert,
+} = useWebAgendaAlerts();
 
 const logoutConfirmOpen = ref(false);
 /// Wipe de salida - espejo del login: el panel oscuro entra desde la
@@ -218,6 +224,7 @@ onMounted(() => {
   // Listener global de mensajes de soporte - vive mientras la sesión
   // esté activa, alimenta el badge del menú y el toast de alerta.
   start();
+  startAgendaAlerts();
   loadAdminBranches();
 });
 
@@ -274,6 +281,12 @@ watch(isAdmin, (admin) => {
                 class="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-pastel-pink px-1.5 text-[10px] font-bold text-[#141318]"
               >
                 {{ unreadCount }}
+              </span>
+              <span
+                v-if="item.to === '/agenda-web' && agendaPendingCount > 0"
+                class="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1.5 text-[10px] font-bold text-base"
+              >
+                {{ agendaPendingCount }}
               </span>
             </NuxtLink>
           </div>
@@ -452,6 +465,45 @@ watch(isAdmin, (admin) => {
           type="button"
           class="shrink-0 cursor-pointer rounded p-0.5 text-text-dim transition hover:text-text-primary"
           @click.prevent.stop="dismissAlert()"
+        >
+          <X class="h-3.5 w-3.5" />
+        </button>
+      </NuxtLink>
+    </Transition>
+
+    <!-- Toast flotante de nueva reserva o tour desde cowhub-book -->
+    <Transition
+      enter-active-class="transition duration-300 ease-out"
+      enter-from-class="translate-y-4 opacity-0"
+      enter-to-class="translate-y-0 opacity-100"
+      leave-active-class="transition duration-200 ease-in"
+      leave-from-class="translate-y-0 opacity-100"
+      leave-to-class="translate-y-4 opacity-0"
+    >
+      <NuxtLink
+        v-if="agendaAlert"
+        to="/agenda-web"
+        class="fixed right-5 z-50 flex w-80 cursor-pointer items-start gap-3 rounded-xl border border-accent/40 bg-surface p-4"
+        :class="lastAlert ? 'bottom-24' : 'bottom-5'"
+        @click="dismissAgendaAlert()"
+      >
+        <div
+          class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent/20"
+        >
+          <CalendarClock class="h-4 w-4 text-accent" />
+        </div>
+        <div class="min-w-0 flex-1">
+          <p class="text-xs font-bold text-text-primary">
+            {{ agendaAlert.title }}
+          </p>
+          <p class="mt-0.5 truncate text-[11px] text-text-muted">
+            {{ agendaAlert.subtitle }}
+          </p>
+        </div>
+        <button
+          type="button"
+          class="shrink-0 cursor-pointer rounded p-0.5 text-text-dim transition hover:text-text-primary"
+          @click.prevent.stop="dismissAgendaAlert()"
         >
           <X class="h-3.5 w-3.5" />
         </button>

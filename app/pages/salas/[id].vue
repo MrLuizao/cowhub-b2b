@@ -542,7 +542,7 @@ async function confirmDelete(): Promise<void> {
           <div class="flex shrink-0 items-center gap-2.5">
             <span class="text-xs font-black text-text-primary">$ {{ b.totalMxn }}</span>
             <span
-              class="rounded-full border px-2.5 py-0.5 text-[10px] font-black"
+              class="inline-flex items-center rounded-md border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider"
               :class="{
                 'border-accent/40 bg-accent/10 text-accent': b.status === 'confirmed',
                 'border-emerald-400/30 bg-emerald-400/10 text-emerald-400': b.status === 'completed',

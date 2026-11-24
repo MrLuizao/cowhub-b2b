@@ -463,11 +463,11 @@ onMounted(async () => {
 
           <button
             type="button"
-            class="flex cursor-pointer items-center gap-1.5 rounded-full bg-accent px-4 py-1.5 text-[11px] font-black text-base transition hover:opacity-90 disabled:opacity-50"
+            class="flex shrink-0 cursor-pointer items-center gap-2 rounded-full bg-accent px-6 py-3 text-sm font-semibold text-base transition hover:opacity-90 disabled:opacity-50"
             :disabled="refreshing || loading"
             @click="refresh"
           >
-            <RefreshCw class="h-3.5 w-3.5" :class="refreshing && 'animate-spin'" />
+            <RefreshCw class="h-4 w-4" :class="refreshing && 'animate-spin'" />
             Actualizar análisis
           </button>
         </div>
@@ -557,13 +557,13 @@ onMounted(async () => {
                   {{ member.name }}
                 </NuxtLink>
                 <span class="text-xs text-text-muted">({{ member.email }})</span>
-                <span class="rounded-full border border-stroke bg-base px-2 py-0.5 text-[10px] font-bold text-text-muted">
+                <span class="inline-flex items-center rounded-md border border-stroke bg-base px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-text-muted">
                   {{ branchName(member.branch_id) }}
                 </span>
 
                 <!-- Pill de Riesgo -->
                 <span
-                  class="rounded-full px-2 py-0.5 text-[10px] font-black border"
+                  class="inline-flex items-center rounded-md border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider"
                   :class="
                     member.churn_risk_level === 'high'
                       ? 'bg-red-500/15 text-red-400 border-red-500/30'
@@ -679,10 +679,10 @@ onMounted(async () => {
 
               <button
                 type="button"
-                class="flex cursor-pointer items-center gap-1.5 rounded-full bg-accent px-4 py-1.5 text-[11px] font-black text-base transition hover:opacity-90"
+                class="flex shrink-0 cursor-pointer items-center gap-2 rounded-full bg-accent px-6 py-3 text-sm font-semibold text-base transition hover:opacity-90"
                 @click="openPlaybookModal(member)"
               >
-                <Sparkles class="h-3.5 w-3.5" />
+                <Sparkles class="h-4 w-4" />
                 Jugada IA
               </button>
             </div>
@@ -819,11 +819,11 @@ onMounted(async () => {
             </button>
             <button
               type="button"
-              class="flex cursor-pointer items-center gap-1.5 rounded-full bg-accent px-4 py-1.5 text-xs font-black text-base transition hover:opacity-90 disabled:opacity-50"
+              class="flex shrink-0 cursor-pointer items-center gap-2 rounded-full bg-accent px-6 py-3 text-sm font-semibold text-base transition hover:opacity-90 disabled:opacity-50"
               :disabled="generatingPreview || !draftMessage.trim() || executingPlaybook"
               @click="executePlaybook"
             >
-              <RefreshCw v-if="executingPlaybook" class="h-3.5 w-3.5 animate-spin" />
+              <RefreshCw v-if="executingPlaybook" class="h-4 w-4 animate-spin" />
               <span>
                 {{
                   selectedAction === 'bonus_push'

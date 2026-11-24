@@ -200,21 +200,21 @@ const agendaKpis = computed(() => [
     label: 'Reservas hoy',
     value: String(agendaStats.value.today),
     icon: Ticket,
-    chip: 'bg-pastel-lavender text-[#141318]',
+    chip: 'bg-pastel-lavender/15 text-pastel-lavender ring-1 ring-inset ring-pastel-lavender/25',
     tag: 'Hoy',
   },
   {
     label: 'Reservas próximas',
     value: String(agendaStats.value.upcoming),
     icon: CalendarClock,
-    chip: 'bg-pastel-yellow text-[#141318]',
+    chip: 'bg-pastel-yellow/15 text-pastel-yellow ring-1 ring-inset ring-pastel-yellow/25',
     tag: 'Activas',
   },
   {
     label: 'Tours nuevos',
     value: String(agendaStats.value.newTours),
     icon: User,
-    chip: 'bg-pastel-pink text-[#141318]',
+    chip: 'bg-pastel-pink/15 text-pastel-pink ring-1 ring-inset ring-pastel-pink/25',
     tag: 'Pendientes',
   },
 ]);
@@ -240,14 +240,13 @@ const pendingTours = computed(() =>
 );
 
 const statusBadge: Record<string, string> = {
-  /// Vigente (lavanda) = reserva activa; Completada (verde) = acceso ya
-  /// confirmado en recepción por folio.
-  confirmed: 'bg-pastel-lavender text-[#141318]',
+  /// Vigente = reserva activa; Completada = acceso ya confirmado en recepción por folio.
+  confirmed: 'bg-pastel-lavender/15 text-pastel-lavender ring-1 ring-inset ring-pastel-lavender/25',
   completed: 'bg-emerald-300/15 text-emerald-300',
-  no_show: 'bg-pastel-yellow text-[#141318]',
+  no_show: 'bg-pastel-yellow/15 text-pastel-yellow ring-1 ring-inset ring-pastel-yellow/25',
   cancelled: 'bg-rose-400/15 text-rose-300',
-  new: 'bg-pastel-pink text-[#141318]',
-  contacted: 'bg-pastel-lavender text-[#141318]',
+  new: 'bg-pastel-pink/15 text-pastel-pink ring-1 ring-inset ring-pastel-pink/25',
+  contacted: 'bg-pastel-lavender/15 text-pastel-lavender ring-1 ring-inset ring-pastel-lavender/25',
   done: 'bg-emerald-300/15 text-emerald-300',
 };
 
@@ -435,9 +434,9 @@ const roomCards = computed(() =>
 );
 
 const roomBadge: Record<RoomState['kind'], string> = {
-  occupied: 'bg-pastel-pink text-[#141318]',
-  next: 'bg-pastel-yellow text-[#141318]',
-  free: 'bg-pastel-lavender text-[#141318]',
+  occupied: 'bg-pastel-pink/15 text-pastel-pink ring-1 ring-inset ring-pastel-pink/25',
+  next: 'bg-pastel-yellow/15 text-pastel-yellow ring-1 ring-inset ring-pastel-yellow/25',
+  free: 'bg-pastel-lavender/15 text-pastel-lavender ring-1 ring-inset ring-pastel-lavender/25',
 };
 const roomLabel: Record<RoomState['kind'], string> = {
   occupied: 'Ocupada',
@@ -588,7 +587,7 @@ const roomsGridClass = computed(() =>
           <h2 class="text-base font-medium text-white">
             Tours por contactar
           </h2>
-          <span class="rounded-full bg-pastel-pink px-2.5 py-0.5 text-xs font-semibold text-[#141318]">
+          <span class="rounded-full bg-pastel-pink/15 px-2.5 py-0.5 text-xs font-semibold text-pastel-pink ring-1 ring-inset ring-pastel-pink/25">
             {{ agendaStats.newTours }} nuevos
           </span>
         </div>

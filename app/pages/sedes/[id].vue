@@ -875,7 +875,7 @@ async function unassignHost(): Promise<void> {
             </div>
           </button>
           <span
-            class="shrink-0 rounded-full border px-2.5 py-0.5 text-[10px] font-black"
+            class="inline-flex shrink-0 items-center rounded-md border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider"
             :class="
               host.isOnDuty
                 ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-400'
@@ -1117,7 +1117,7 @@ async function unassignHost(): Promise<void> {
                 Turno {{ shiftLabel(selectedHost.shift).toLowerCase() }}
               </p>
               <span
-                class="mt-1.5 inline-block rounded-full border px-2.5 py-0.5 text-[10px] font-black"
+                class="mt-1.5 inline-flex items-center rounded-md border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider"
                 :class="
                   selectedHost.isOnDuty
                     ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-400'

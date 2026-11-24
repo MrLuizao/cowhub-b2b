@@ -14,8 +14,8 @@ const props = withDefaults(
 
 const trendClasses = computed(() =>
   props.trend >= 0
-    ? 'bg-pastel-lavender text-[#141318]'
-    : 'bg-pastel-pink text-[#141318]',
+    ? 'bg-pastel-lavender/15 text-pastel-lavender ring-1 ring-inset ring-pastel-lavender/25'
+    : 'bg-pastel-pink/15 text-pastel-pink ring-1 ring-inset ring-pastel-pink/25',
 );
 </script>
 

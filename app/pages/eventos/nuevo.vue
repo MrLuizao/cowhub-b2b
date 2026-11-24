@@ -19,7 +19,9 @@ const form = ref({
   name: '',
   hostId: '',
   branchIds: session.value?.branchId ? [session.value.branchId] : ([] as string[]),
+  roomId: '',
   room: '',
+  date: new Date().toISOString().slice(0, 10),
   start: '18:00',
   end: '19:30',
   capacity: 25,
@@ -46,6 +48,7 @@ const availableSpaces = computed(() => {
 });
 
 function selectSpace(sp: BookableSpace): void {
+  form.value.roomId = sp.id;
   form.value.room = sp.name;
   form.value.capacity = sp.capacity;
 }
@@ -103,7 +106,9 @@ async function submit(): Promise<void> {
         name: f.name.trim(),
         hostId: f.hostId,
         branchIds: f.branchIds,
+        roomId: f.roomId || undefined,
         room: f.room.trim(),
+        date: f.date || undefined,
         startMinutes: toMinutes(f.start),
         endMinutes: toMinutes(f.end),
         capacity: Number(f.capacity),
@@ -278,7 +283,19 @@ onMounted(async () => {
         <span class="h-4 w-1 rounded-full bg-accent" />
         Horario y cupo
       </h2>
-      <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <label class="block">
+          <span
+            class="text-[10px] font-bold uppercase tracking-widest text-text-dim"
+          >
+            Fecha *
+          </span>
+          <input
+            v-model="form.date"
+            type="date"
+            class="mt-1 w-full rounded-xl border border-stroke bg-base px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
+          />
+        </label>
         <label class="block">
           <span
             class="text-[10px] font-bold uppercase tracking-widest text-text-dim"

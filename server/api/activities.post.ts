@@ -44,16 +44,33 @@ export default defineEventHandler(async (event): Promise<Activity> => {
       ? Math.min(1440, Math.max(1, Math.round(body.endMinutes)))
       : startMinutes + 60;
 
+  const todayIso = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Mexico_City',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+  const date =
+    typeof body.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.date)
+      ? body.date
+      : todayIso;
+  const roomId =
+    typeof body.roomId === 'string' && body.roomId.trim()
+      ? body.roomId.trim()
+      : null;
+
   const ref = db().collection('activities').doc();
   await ref.set({
     branch_ids: branchIds,
     name,
     host_id: hostSnap.id,
     host: (host.name as string) ?? '',
+    ...(roomId ? { room_id: roomId } : {}),
     room:
       typeof body.room === 'string' && body.room.trim()
         ? body.room.trim()
         : 'Sala 1',
+    date,
     start_minutes: startMinutes,
     end_minutes: Math.max(endMinutes, startMinutes + 15),
     capacity,

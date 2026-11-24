@@ -1,10 +1,20 @@
 <script setup lang="ts">
 import {
+  collection,
+  limit,
+  onSnapshot,
+  orderBy,
+  query,
+  type Unsubscribe,
+} from 'firebase/firestore';
+import {
   Activity,
   AlertTriangle,
   ArrowRight,
   Brain,
+  CalendarClock,
   CheckCircle2,
+  CircleDollarSign,
   Clock3,
   DollarSign,
   Download,
@@ -12,6 +22,7 @@ import {
   Flame,
   Play,
   Sparkles,
+  Ticket,
   User,
   Users,
 } from '@lucide/vue';
@@ -23,8 +34,28 @@ import type {
   PaymentsReport,
 } from '#shared/types';
 
+const { db } = useFirebase();
 const { session } = useAuth();
 const isAdmin = computed(() => session.value?.role === 'ADMIN');
+
+// ─── KPIs de Agenda web (reservas y tours del sitio público) ───
+const webBookings = ref<{ date: string; status: string; totalMxn: number }[]>([]);
+const webTours = ref<{ status: string }[]>([]);
+let unsubWebB: Unsubscribe | null = null;
+let unsubWebT: Unsubscribe | null = null;
+
+const webAgendaStats = computed(() => {
+  const todayKey = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' });
+  const monthKey = todayKey.slice(0, 7);
+  return {
+    today: webBookings.value.filter((b) => b.date === todayKey).length,
+    monthRevenue: webBookings.value
+      .filter((b) => b.status === 'confirmed' && b.date.startsWith(monthKey))
+      .reduce((s, b) => s + b.totalMxn, 0),
+    newTours: webTours.value.filter((t) => t.status === 'new').length,
+    total: webBookings.value.length,
+  };
+});
 
 /// Analítica del día (KPIs en vivo + diagnóstico IA) - reubicada desde el dashboard.
 const runtimeConfig = useRuntimeConfig();
@@ -205,6 +236,27 @@ function togglePaymentPlan(planId: string): void {
 onMounted(async () => {
   startLive();
   loadAiData();
+  if (db) {
+    unsubWebB = onSnapshot(
+      query(collection(db, 'space_bookings'), orderBy('created_at', 'desc'), limit(300)),
+      (snap) => {
+        webBookings.value = snap.docs.map((d) => {
+          const b = d.data();
+          return {
+            date: b.date ?? '',
+            status: b.status ?? 'confirmed',
+            totalMxn: b.total_mxn ?? 0,
+          };
+        });
+      },
+    );
+    unsubWebT = onSnapshot(
+      query(collection(db, 'tour_requests'), orderBy('created_at', 'desc'), limit(300)),
+      (snap) => {
+        webTours.value = snap.docs.map((d) => ({ status: d.data().status ?? 'new' }));
+      },
+    );
+  }
   try {
     branches.value = await $api<Branch[]>('/api/branches');
     const today = new Date();
@@ -219,6 +271,8 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   stopLive();
+  unsubWebB?.();
+  unsubWebT?.();
 });
 
 function toInputDate(d: Date): string {
@@ -419,6 +473,52 @@ function exportCsv(): void {
       </div>
     </section>
 
+    <!-- Agenda web: KPIs de reservas y tours del sitio público -->
+    <section class="space-y-4">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <h2 class="text-sm font-black uppercase tracking-widest text-text-muted">
+          Agenda web
+        </h2>
+        <NuxtLink
+          to="/agenda-web"
+          class="flex cursor-pointer items-center gap-1.5 rounded-full border border-stroke bg-surface px-4 py-1.5 text-[11px] font-bold text-text-muted transition hover:border-accent hover:text-text-primary"
+        >
+          <span>Ir a Agenda web</span>
+          <ArrowRight class="h-3.5 w-3.5" />
+        </NuxtLink>
+      </div>
+      <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div class="rounded-2xl border border-stroke bg-surface p-5">
+          <div class="flex items-center justify-between text-text-dim">
+            <span class="text-[10px] font-bold uppercase tracking-widest">Reservas hoy</span>
+            <Ticket class="h-4 w-4" />
+          </div>
+          <p class="mt-2 text-3xl font-semibold tracking-tight text-text-primary">{{ webAgendaStats.today }}</p>
+        </div>
+        <div class="rounded-2xl border border-stroke bg-surface p-5">
+          <div class="flex items-center justify-between text-text-dim">
+            <span class="text-[10px] font-bold uppercase tracking-widest">Ingresos del mes</span>
+            <CircleDollarSign class="h-4 w-4" />
+          </div>
+          <p class="mt-2 text-3xl font-semibold tracking-tight text-text-primary">{{ formatMoney(webAgendaStats.monthRevenue) }}</p>
+        </div>
+        <div class="rounded-2xl border border-stroke bg-surface p-5">
+          <div class="flex items-center justify-between text-text-dim">
+            <span class="text-[10px] font-bold uppercase tracking-widest">Tours nuevos</span>
+            <User class="h-4 w-4" />
+          </div>
+          <p class="mt-2 text-3xl font-semibold tracking-tight text-text-primary">{{ webAgendaStats.newTours }}</p>
+        </div>
+        <div class="rounded-2xl border border-stroke bg-surface p-5">
+          <div class="flex items-center justify-between text-text-dim">
+            <span class="text-[10px] font-bold uppercase tracking-widest">Reservas totales</span>
+            <CalendarClock class="h-4 w-4" />
+          </div>
+          <p class="mt-2 text-3xl font-semibold tracking-tight text-text-primary">{{ webAgendaStats.total }}</p>
+        </div>
+      </div>
+    </section>
+
     <!-- Diagnóstico de Retención IA -->
     <section v-if="isAiEnabled && canViewAi" class="space-y-4">
       <div class="flex flex-wrap items-center justify-between gap-3">
@@ -586,9 +686,9 @@ function exportCsv(): void {
 
             <NuxtLink
               to="/retencion"
-              class="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full bg-accent px-4 py-1.5 text-[11px] font-black text-base transition hover:opacity-90"
+              class="flex shrink-0 cursor-pointer items-center gap-2 rounded-full bg-accent px-6 py-3 text-sm font-semibold text-base transition hover:opacity-90"
             >
-              <Sparkles class="h-3.5 w-3.5" />
+              <Sparkles class="h-4 w-4" />
               <span>Ejecutar Jugada</span>
             </NuxtLink>
           </div>
@@ -866,7 +966,7 @@ function exportCsv(): void {
                 </td>
                 <td class="px-5 py-3">
                   <span
-                    class="rounded-full border px-2.5 py-0.5 text-[10px] font-black"
+                    class="inline-flex items-center rounded-md border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider"
                     :class="
                       payment.status === 'APPROVED'
                         ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-400'
@@ -982,7 +1082,7 @@ function exportCsv(): void {
                 </td>
                 <td class="px-5 py-3">
                   <span
-                    class="rounded-full border px-2.5 py-0.5 text-[10px] font-black"
+                    class="inline-flex items-center rounded-md border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider"
                     :class="
                       record.granted
                         ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-400'
@@ -1104,7 +1204,7 @@ function exportCsv(): void {
                 </td>
                 <td class="px-5 py-3">
                   <span
-                    class="rounded-full border px-2.5 py-0.5 text-[10px] font-black"
+                    class="inline-flex items-center rounded-md border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider"
                     :class="
                       ad.status === 'ACTIVE'
                         ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-400'

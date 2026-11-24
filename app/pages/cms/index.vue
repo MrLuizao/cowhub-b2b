@@ -303,10 +303,10 @@ onMounted(async () => {
         </h2>
         <button
           v-if="isAdmin"
-          class="flex cursor-pointer items-center gap-1.5 rounded-full bg-accent px-4 py-1.5 text-[11px] font-black text-base transition hover:opacity-90"
+          class="flex shrink-0 cursor-pointer items-center gap-2 rounded-full bg-accent px-6 py-3 text-sm font-semibold text-base transition hover:opacity-90"
           @click="navigateTo('/cms/notificaciones/nueva')"
         >
-          <Plus class="h-3.5 w-3.5" />
+          <Plus class="h-4 w-4" />
           Nueva notificación
         </button>
       </div>
@@ -351,7 +351,7 @@ onMounted(async () => {
               </td>
               <td class="px-5 py-3">
                 <span
-                  class="rounded-full border border-stroke bg-base px-2.5 py-0.5 text-[10px] font-black text-text-muted"
+                  class="inline-flex items-center rounded-md border border-stroke bg-base px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-text-muted"
                 >
                   {{
                     log.audience === 'ALL'
@@ -457,10 +457,10 @@ onMounted(async () => {
         </h2>
         <button
           v-if="isAdmin"
-          class="flex cursor-pointer items-center gap-1.5 rounded-full bg-accent px-4 py-1.5 text-[11px] font-black text-base transition hover:opacity-90"
+          class="flex shrink-0 cursor-pointer items-center gap-2 rounded-full bg-accent px-6 py-3 text-sm font-semibold text-base transition hover:opacity-90"
           @click="navigateTo('/cms/cupones/nuevo')"
         >
-          <Plus class="h-3.5 w-3.5" />
+          <Plus class="h-4 w-4" />
           Nuevo cupón
         </button>
       </div>
@@ -575,10 +575,10 @@ onMounted(async () => {
           Banners
         </h2>
         <button
-          class="flex cursor-pointer items-center gap-1.5 rounded-full bg-accent px-4 py-1.5 text-[11px] font-black text-base transition hover:opacity-90"
+          class="flex shrink-0 cursor-pointer items-center gap-2 rounded-full bg-accent px-6 py-3 text-sm font-semibold text-base transition hover:opacity-90"
           @click="bannerModalOpen = true"
         >
-          <Plus class="h-3.5 w-3.5" />
+          <Plus class="h-4 w-4" />
           Nuevo banner
         </button>
       </div>

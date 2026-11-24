@@ -4,6 +4,7 @@ import {
   Bell,
   Brain,
   Building2,
+  CalendarClock,
   CalendarDays,
   CreditCard,
   Gift,
@@ -85,6 +86,12 @@ const navGroups: { label: string | null; items: NavItem[] }[] = [
         to: '/recepcion',
         label: 'Recepción',
         icon: ScanLine,
+        roles: ['ADMIN', 'MANAGER', 'RECEPTIONIST'],
+      },
+      {
+        to: '/agenda-web',
+        label: 'Agenda web',
+        icon: CalendarClock,
         roles: ['ADMIN', 'MANAGER', 'RECEPTIONIST'],
       },
       {
@@ -302,6 +309,21 @@ watch(isAdmin, (admin) => {
         >
           Aviso de privacidad
         </NuxtLink>
+        <a
+          href="https://foundry-landing-pi.vercel.app/"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="group mt-3 flex cursor-pointer flex-col items-center gap-1.5 rounded-xl border border-stroke bg-surface/60 px-3 py-2.5 transition duration-300 hover:border-[#ff6b00]/70 hover:bg-surface-elevated"
+        >
+          <span class="text-[9px] font-bold uppercase tracking-[0.22em] text-text-muted transition group-hover:text-white">
+            Desarrollado por
+          </span>
+          <img
+            src="/brand/fundere-original-dark.png"
+            alt="FUNDERE Software Studio"
+            class="h-6 w-auto object-contain mix-blend-screen transition duration-300 group-hover:scale-105"
+          />
+        </a>
       </div>
     </aside>
 

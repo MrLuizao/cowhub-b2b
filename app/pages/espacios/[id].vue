@@ -557,7 +557,7 @@ async function deleteActivity(): Promise<void> {
           </p>
         </div>
         <span
-          class="rounded-full border px-2.5 py-0.5 text-[10px] font-black"
+          class="inline-flex items-center rounded-md border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider"
           :class="
             detail.host.isOnDuty
               ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-400'

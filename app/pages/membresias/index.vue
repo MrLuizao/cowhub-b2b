@@ -224,10 +224,10 @@ function togglePlanFilter(
       </span>
       <button
         v-if="isAdmin"
-        class="ml-auto flex cursor-pointer items-center gap-1.5 rounded-full bg-accent px-4 py-1.5 text-[11px] font-black text-base transition hover:opacity-90"
+        class="ml-auto flex shrink-0 cursor-pointer items-center gap-2 rounded-full bg-accent px-6 py-3 text-sm font-semibold text-base transition hover:opacity-90"
         @click="navigateTo('/membresias/nuevo')"
       >
-        <Plus class="h-3.5 w-3.5" />
+        <Plus class="h-4 w-4" />
         Nueva membresía
       </button>
     </div>

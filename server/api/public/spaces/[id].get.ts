@@ -27,7 +27,7 @@ export default defineEventHandler(async (event) => {
       .collection('space_bookings')
       .where('space_id', '==', id)
       .where('date', '==', date)
-      .where('status', '==', 'confirmed')
+      .where('status', 'in', ['pending', 'confirmed'])
       .get();
     booked = snap.docs.map((d) => {
       const b = d.data();

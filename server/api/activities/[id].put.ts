@@ -47,8 +47,14 @@ export default defineEventHandler(async (event): Promise<Activity> => {
       const filtered = body.branchIds.filter((b) => valid.has(b));
       if (filtered.length) update.branch_ids = filtered;
     }
+    if (typeof body.roomId === 'string' && body.roomId.trim()) {
+      update.room_id = body.roomId.trim();
+    }
     if (typeof body.room === 'string' && body.room.trim()) {
       update.room = body.room.trim();
+    }
+    if (typeof body.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.date)) {
+      update.date = body.date;
     }
     if (typeof body.startMinutes === 'number') {
       update.start_minutes = Math.min(1439, Math.max(0, Math.round(body.startMinutes)));

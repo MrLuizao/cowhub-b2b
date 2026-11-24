@@ -54,12 +54,12 @@ Toda nueva vista o ajuste en `cowhub-b2b` debe respetar estrictamente los siguie
 - **Barra de herramientas (`flex items-center gap-4`) en este orden exacto**:
   1. Buscador `<UInput>` (`w-full max-w-sm size="lg"`).
   2. **Badge contador inmediatamente después del input de búsqueda**: `rounded-full border border-stroke bg-surface px-3 py-1 text-[11px] font-bold text-text-muted` (ej. `6 salas`, `24 miembros`).
-  3. Botón primario de creación alineado al extremo derecho (`ml-auto flex cursor-pointer items-center gap-1.5 rounded-full bg-accent px-4 py-1.5 text-[11px] font-black text-base`, ej. `+ Nueva sala`).
+  3. Botón primario de creación alineado al extremo derecho (`ml-auto flex shrink-0 cursor-pointer items-center gap-2 rounded-full bg-accent px-6 py-3 text-sm font-semibold text-base transition hover:opacity-90` con icono `h-4 w-4`, ej. `+ Nueva sala`). Este mismo tamaño y estilo aplica a todos los botones primarios de creación o acción tipo pill `bg-accent` en barras de herramientas y encabezados.
 - **Tabla paginada (`overflow-hidden rounded-2xl border border-stroke bg-surface`)**:
   - Primera columna con miniatura (`h-10 w-14 rounded-lg border border-stroke object-cover`) o `MemberAvatar`, nombre clickeable hacia `/<seccion>/${id}` y subtítulo truncado.
   - **Badges de destacado (`featured`) sin texto**: usar únicamente el contenedor circular con el icono (`inline-flex h-5 w-5 items-center justify-center rounded-full border border-amber-400/30 bg-amber-400/10 text-amber-400` con `<Sparkles class="h-2.5 w-2.5" />` y `title` descriptivo).
-  - Columna de Sede con pills navegables hacia `/sedes/${branchId}`.
-  - Columna derecha de Estado con pill semántico (`ACTIVA` en esmeralda, `INACTIVA`/`VENCIDA` en rojo).
+  - Columna de Sede con pills navegables hacia `/sedes/${branchId}` (`rounded-full border border-stroke bg-base px-2.5 py-0.5 text-[10px] font-bold text-text-muted`).
+  - **Badges informativos (Estado, Turno, Tipo/Ubicación) vs. pills clickeables**: los badges **no clickeables** (`ACTIVA`, `INACTIVA`, `EN TURNO`, `FUERA DE TURNO`, `MATUTINO`, `VESPERTINO`, `NOCTURNO`, etc.) **NO deben usar `rounded-full`** para no confundirse con los pills clickeables de Sede; deben usar forma más cuadrada (`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[10px] font-bold tracking-wider uppercase`) con fondo `/15`, borde `/35` y un indicador `dot` (`h-1.5 w-1.5 rounded-full`) en los badges de estado para asegurar contraste en modo claro y oscuro.
   - Footer de paginación (`pageSize = 8`) con resumen `N registros · página X de Y` y botones `ChevronLeft`/`ChevronRight`.
 
 ### 3. Patrón de Vistas de Alta / Creación (`/<seccion>/nuevo`)

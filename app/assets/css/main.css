@@ -2,46 +2,46 @@
 @import "@nuxt/ui";
 
 @theme {
-  /* FlowDesk-inspired dark SaaS palette (default) */
-  --color-sidebar: #0e0e11;
-  --color-base: #141318;
-  --color-surface: #201f26;
-  --color-surface-elevated: #292832;
-  --color-stroke: #2c2b35;
+  /* COW-HUB dark luxury palette (ink & bronze) */
+  --color-sidebar: #0d0906;
+  --color-base: #120c08;
+  --color-surface: #1d1610;
+  --color-surface-elevated: #2e231a;
+  --color-stroke: #382b20;
 
-  /* Signature pastel accents */
-  --color-accent: #989de7;
-  --color-pastel-lavender: #989de7;
-  --color-pastel-pink: #ff98cb;
-  --color-pastel-yellow: #ffcf68;
+  /* Signature bronze & warm accents */
+  --color-accent: #d4a17c;
+  --color-pastel-lavender: #d4a17c;
+  --color-pastel-pink: #c96a4a;
+  --color-pastel-yellow: #e3b59b;
 
-  /* Legacy logo tokens mapped to new pastel triad */
-  --color-logo-indigo: #989de7;
-  --color-logo-violet: #ff98cb;
-  --color-logo-pink: #ffcf68;
+  /* Brand tokens mapped to bronze palette */
+  --color-logo-indigo: #d4a17c;
+  --color-logo-violet: #c6916b;
+  --color-logo-pink: #e3b59b;
 
   /* Typography colors */
-  --color-text-primary: #ffffff;
-  --color-text-secondary: #d4d3dc;
-  --color-text-muted: #9e9da9;
-  --color-text-dim: #706f7c;
+  --color-text-primary: #f9f5f1;
+  --color-text-secondary: #e3d5c5;
+  --color-text-muted: #b5a392;
+  --color-text-dim: #8a6f58;
 
   --font-sans: 'Outfit', ui-sans-serif, system-ui, sans-serif;
   --font-display: 'Outfit', ui-sans-serif, system-ui, sans-serif;
 }
 
 @theme static {
-  --color-accent-50: #f4f5fe;
-  --color-accent-100: #e8eafc;
-  --color-accent-200: #d3d6f9;
-  --color-accent-300: #b6bbf2;
-  --color-accent-400: #989de7;
-  --color-accent-500: #989de7;
-  --color-accent-600: #7d82d9;
-  --color-accent-700: #656ac2;
-  --color-accent-800: #50549e;
-  --color-accent-900: #3d4078;
-  --color-accent-950: #222444;
+  --color-accent-50: #fbf7f4;
+  --color-accent-100: #f5ebe2;
+  --color-accent-200: #ebd5c3;
+  --color-accent-300: #e3b59b;
+  --color-accent-400: #d4a17c;
+  --color-accent-500: #c6916b;
+  --color-accent-600: #a8764f;
+  --color-accent-700: #8a5e3d;
+  --color-accent-800: #6e4a30;
+  --color-accent-900: #553925;
+  --color-accent-950: #2e1e13;
 }
 
 :root,
@@ -49,20 +49,20 @@ html.dark {
   color-scheme: dark;
 }
 
-/* FlowDesk Light Theme */
+/* Warm Light Theme */
 html.light {
   color-scheme: light;
-  --color-sidebar: #ffffff;
-  --color-base: #f5f5f8;
+  --color-sidebar: #f9f5f1;
+  --color-base: #f5efe8;
   --color-surface: #ffffff;
-  --color-surface-elevated: #ececf2;
-  --color-stroke: #e4e3ec;
+  --color-surface-elevated: #ece3d8;
+  --color-stroke: #e3d5c5;
 
-  --color-accent: #6c72d9;
-  --color-text-primary: #141318;
-  --color-text-secondary: #373644;
-  --color-text-muted: #646373;
-  --color-text-dim: #8b8a99;
+  --color-accent: #a8764f;
+  --color-text-primary: #120c08;
+  --color-text-secondary: #2e231a;
+  --color-text-muted: #6b4c37;
+  --color-text-dim: #8a6f58;
 }
 
 html,
@@ -200,6 +200,23 @@ html.light .bg-accent.text-base,
 html.light button.bg-accent,
 html.light a.bg-accent {
   color: #ffffff !important;
+}
+
+/* Contraste legible para badges semánticos en modo claro */
+html.light .text-emerald-400,
+html.light .text-emerald-300 {
+  color: #047857 !important;
+}
+html.light .text-amber-400,
+html.light .text-amber-300 {
+  color: #b45309 !important;
+}
+html.light .text-violet-400 {
+  color: #6d28d9 !important;
+}
+html.light .text-red-400,
+html.light .text-rose-300 {
+  color: #b91c1c !important;
 }
 
 @keyframes access-pop {

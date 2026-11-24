@@ -1,6 +1,15 @@
 
 import { db, FieldValue } from '../../utils/db';
 import {
+  sendPublicBookingReceivedEmail,
+  sendPublicBookingStaffNotice,
+} from '../../utils/mail';
+import {
+  resolveB2bOrigin,
+  resolveStaffNotifyEmails,
+  sendStaffTopicPush,
+} from '../../utils/public-notify';
+import {
   CLOSE_HOUR,
   MAX_ADVANCE_DAYS,
   MAX_DURATION_H,
@@ -108,7 +117,7 @@ export default defineEventHandler(async (event) => {
         bookingsRef
           .where('space_id', '==', spaceId)
           .where('date', '==', date)
-          .where('status', '==', 'confirmed'),
+          .where('status', 'in', ['pending', 'confirmed']),
       );
       const intervals = existing.docs.map((d) => {
         const b = d.data();
@@ -132,7 +141,7 @@ export default defineEventHandler(async (event) => {
         guests: { name, email, phone, company },
         people,
         total_mxn: totalMxn,
-        status: 'confirmed',
+        status: 'pending',
         source: 'web',
         notes: null,
         created_at: FieldValue.serverTimestamp(),
@@ -149,5 +158,45 @@ export default defineEventHandler(async (event) => {
   }
 
   const snap = await bookingsRef.doc(bookingId).get();
-  return { booking: toSpaceBooking(snap) };
+  const booking = toSpaceBooking(snap);
+
+  const timeLabel =
+    mode === 'day' ? 'Día completo' : `${startHourN}:00 - ${endHourN}:00`;
+  const agendaUrl = `${resolveB2bOrigin(event)}/agenda-web`;
+  const staffEmails = await resolveStaffNotifyEmails();
+
+  await Promise.allSettled([
+    sendPublicBookingReceivedEmail({
+      to: email,
+      name,
+      folio,
+      spaceName: booking.spaceName,
+      date,
+      timeLabel,
+      people,
+      totalMxn,
+    }),
+    ...staffEmails.map((to) =>
+      sendPublicBookingStaffNotice({
+        to,
+        folio,
+        spaceName: booking.spaceName,
+        date,
+        timeLabel,
+        people,
+        totalMxn,
+        guestName: name,
+        guestEmail: email,
+        guestPhone: phone,
+        agendaUrl,
+      }),
+    ),
+    sendStaffTopicPush({
+      title: `Nueva reserva por confirmar (${folio})`,
+      body: `${name} · ${booking.spaceName} (${date} · ${timeLabel})`,
+      data: { kind: 'booking', folio, route: '/agenda-web' },
+    }),
+  ]);
+
+  return { booking };
 });

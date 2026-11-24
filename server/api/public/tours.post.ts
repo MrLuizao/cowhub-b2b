@@ -1,5 +1,14 @@
 
 import { db, FieldValue } from '../../utils/db';
+import {
+  sendPublicTourReceivedEmail,
+  sendPublicTourStaffNotice,
+} from '../../utils/mail';
+import {
+  resolveB2bOrigin,
+  resolveStaffNotifyEmails,
+  sendStaffTopicPush,
+} from '../../utils/public-notify';
 import { genFolio, isValidDateKey, toTourRequest } from '../../utils/public-booking';
 
 interface TourBody {
@@ -65,5 +74,39 @@ export default defineEventHandler(async (event) => {
   });
 
   const snap = await ref.get();
-  return { tour: toTourRequest(snap) };
+  const tour = toTourRequest(snap);
+
+  const agendaUrl = `${resolveB2bOrigin(event)}/agenda-web`;
+  const staffEmails = await resolveStaffNotifyEmails();
+
+  await Promise.allSettled([
+    sendPublicTourReceivedEmail({
+      to: email,
+      name,
+      folio,
+      preferredDate,
+      people,
+    }),
+    ...staffEmails.map((to) =>
+      sendPublicTourStaffNotice({
+        to,
+        folio,
+        name,
+        company,
+        email,
+        phone,
+        preferredDate,
+        people,
+        message,
+        agendaUrl,
+      }),
+    ),
+    sendStaffTopicPush({
+      title: `Nueva solicitud de tour (${folio})`,
+      body: `${name}${company ? ` · ${company}` : ''} · ${preferredDate ?? 'Fecha por definir'}`,
+      data: { kind: 'tour', folio, route: '/agenda-web' },
+    }),
+  ]);
+
+  return { tour };
 });

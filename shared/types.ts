@@ -81,7 +81,11 @@ export interface Activity {
   hostId: string;
   /// Nombre del host - etiqueta denormalizada solo para display.
   host: string;
+  /// Referencia canónica a la sala física (BookableSpace.id).
+  roomId?: string;
   room: string;
+  /// Fecha del evento (YYYY-MM-DD).
+  date?: string;
   startMinutes: number;
   endMinutes: number;
   capacity: number;
@@ -846,7 +850,7 @@ export interface SpaceBooking {
   };
   people: number;
   totalMxn: number;
-  status: 'confirmed' | 'cancelled' | 'completed' | 'no_show';
+  status: 'pending' | 'confirmed' | 'cancelled' | 'completed' | 'no_show';
   source: 'web' | 'b2b';
   notes: string | null;
   /// Sello de acceso confirmado en recepción (folio validado).

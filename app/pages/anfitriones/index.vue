@@ -62,11 +62,11 @@ function branchName(branchId: string): string {
 function shiftCls(shift: string): string {
   switch (shift) {
     case 'MAÑANA':
-      return 'border-amber-400/30 bg-amber-400/10 text-amber-400';
+      return 'border-amber-500/35 bg-amber-500/15 text-amber-400';
     case 'NOCHE':
-      return 'border-violet-400/30 bg-violet-400/10 text-violet-400';
+      return 'border-violet-500/35 bg-violet-500/15 text-violet-400';
     default:
-      return 'border-accent/30 bg-accent/10 text-accent';
+      return 'border-accent/40 bg-accent/15 text-accent';
   }
 }
 
@@ -264,10 +264,10 @@ function toggleHostFilter(
       </span>
       <button
         v-if="canCreateHost"
-        class="ml-auto flex cursor-pointer items-center gap-1.5 rounded-full bg-accent px-4 py-1.5 text-[11px] font-black text-base transition hover:opacity-90"
+        class="ml-auto flex shrink-0 cursor-pointer items-center gap-2 rounded-full bg-accent px-6 py-3 text-sm font-semibold text-base transition hover:opacity-90"
         @click="navigateTo('/anfitriones/nuevo')"
       >
-        <Plus class="h-3.5 w-3.5" />
+        <Plus class="h-4 w-4" />
         Nuevo integrante
       </button>
     </div>
@@ -326,7 +326,7 @@ function toggleHostFilter(
             </td>
             <td class="px-5 py-3">
               <span
-                class="rounded-full border px-2.5 py-0.5 text-[10px] font-black"
+                class="inline-flex items-center rounded-md border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider"
                 :class="shiftCls(host.shift)"
               >
                 {{ shiftLabel(host.shift) }}
@@ -353,13 +353,17 @@ function toggleHostFilter(
             </td>
             <td class="px-5 py-3 text-right">
               <span
-                class="rounded-full border px-2.5 py-0.5 text-[10px] font-black"
+                class="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider"
                 :class="
                   host.isOnDuty
-                    ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-400'
-                    : 'border-red-400/30 bg-red-400/10 text-red-400'
+                    ? 'border-emerald-500/35 bg-emerald-500/15 text-emerald-400'
+                    : 'border-red-500/35 bg-red-500/15 text-red-400'
                 "
               >
+                <span
+                  class="h-1.5 w-1.5 rounded-full"
+                  :class="host.isOnDuty ? 'bg-emerald-500' : 'bg-red-500'"
+                />
                 {{ host.isOnDuty ? 'EN TURNO' : 'FUERA DE TURNO' }}
               </span>
             </td>

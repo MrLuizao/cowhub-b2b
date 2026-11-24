@@ -105,17 +105,20 @@ function statusMeta(status: MemberAdmin['adminStatus']) {
     case 'EXPIRING':
       return {
         label: 'POR VENCER',
-        cls: 'border-amber-400/30 bg-amber-400/10 text-amber-400',
+        cls: 'border-amber-500/35 bg-amber-500/15 text-amber-400',
+        dot: 'bg-amber-500',
       };
     case 'EXPIRED':
       return {
         label: 'VENCIDA',
-        cls: 'border-red-400/30 bg-red-400/10 text-red-400',
+        cls: 'border-red-500/35 bg-red-500/15 text-red-400',
+        dot: 'bg-red-500',
       };
     default:
       return {
         label: 'ACTIVA',
-        cls: 'border-emerald-400/30 bg-emerald-400/10 text-emerald-400',
+        cls: 'border-emerald-500/35 bg-emerald-500/15 text-emerald-400',
+        dot: 'bg-emerald-500',
       };
   }
 }
@@ -284,10 +287,10 @@ function formatDate(ts: number | null): string {
       </span>
       <button
         v-if="canCreateMember"
-        class="ml-auto flex cursor-pointer items-center gap-1.5 rounded-full bg-accent px-4 py-1.5 text-[11px] font-black text-base transition hover:opacity-90"
+        class="ml-auto flex shrink-0 cursor-pointer items-center gap-2 rounded-full bg-accent px-6 py-3 text-sm font-semibold text-base transition hover:opacity-90"
         @click="navigateTo('/miembros/nuevo')"
       >
-        <Plus class="h-3.5 w-3.5" />
+        <Plus class="h-4 w-4" />
         Nuevo miembro
       </button>
     </div>
@@ -361,9 +364,13 @@ function formatDate(ts: number | null): string {
             </td>
             <td class="px-5 py-3">
               <span
-                class="rounded-full border px-2.5 py-0.5 text-[10px] font-black"
+                class="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider"
                 :class="statusMeta(member.adminStatus).cls"
               >
+                <span
+                  class="h-1.5 w-1.5 rounded-full"
+                  :class="statusMeta(member.adminStatus).dot"
+                />
                 {{ statusMeta(member.adminStatus).label }}
               </span>
             </td>

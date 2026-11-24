@@ -1,14 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <!-- RIR-HUB · mark: barbell reads as "H" (hub) — RIR = Reps In Reserve -->
-  <rect width="512" height="512" rx="112" fill="#7c6cf6"/>
-  <g fill="#ffffff">
-    <!-- outer plates -->
-    <rect x="64" y="168" width="26" height="176" rx="13"/>
-    <rect x="422" y="168" width="26" height="176" rx="13"/>
-    <!-- inner plates (stems of the H) -->
-    <rect x="100" y="120" width="54" height="272" rx="27"/>
-    <rect x="358" y="120" width="54" height="272" rx="27"/>
-    <!-- the bar (crossbar of the H) -->
-    <rect x="100" y="229" width="312" height="54" rx="27"/>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36" fill="none">
+  <rect width="36" height="36" rx="8" fill="#120c08" />
+  <path
+    d="M8.5 30V15.5C8.5 10.2533 12.7533 6 18 6C23.2467 6 27.5 10.2533 27.5 15.5V30H24.2"
+    stroke="#d4a17c"
+    stroke-width="1.75"
+    stroke-linecap="square"
+  />
+  <path
+    d="M11.8 30H8.5M12.2 30V15.8C12.2 12.5967 14.7967 10 18 10C21.2033 10 23.8 12.5967 23.8 15.8V30"
+    stroke="#d4a17c"
+    stroke-width="1.75"
+    stroke-linecap="square"
+  />
+  <circle cx="18" cy="19.5" r="2.3" fill="#d4a17c" />
 </svg>

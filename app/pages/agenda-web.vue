@@ -11,7 +11,8 @@ import {
 } from 'firebase/firestore';
 import {
   CalendarClock,
-  CircleDollarSign,
+  ChevronLeft,
+  ChevronRight,
   Lock,
   Mail,
   Phone,
@@ -30,9 +31,13 @@ const tours = ref<TourRequest[]>([]);
 const pending = ref(true);
 const tab = ref<'reservas' | 'tours'>('reservas');
 const statusFilter = ref('todas');
+const search = ref('');
+const page = ref(1);
+const pageSize = 8;
 const savingId = ref<string | null>(null);
 
 const BOOKING_STATUSES = [
+  { value: 'pending', label: 'Por confirmar' },
   { value: 'confirmed', label: 'Vigente' },
   { value: 'completed', label: 'Completada' },
   { value: 'no_show', label: 'No show' },
@@ -49,11 +54,14 @@ const TOUR_STATUSES = [
 let unsubB: Unsubscribe | null = null;
 let unsubT: Unsubscribe | null = null;
 
-onMounted(() => {
+function subscribe() {
+  unsubB?.();
+  unsubT?.();
   if (!db) {
     pending.value = false;
     return;
   }
+  pending.value = true;
   unsubB = onSnapshot(
     query(collection(db, 'space_bookings'), orderBy('created_at', 'desc'), limit(300)),
     (snap) => {
@@ -106,14 +114,16 @@ onMounted(() => {
       });
     },
   );
-});
+}
+
+onMounted(subscribe);
 
 onBeforeUnmount(() => {
   unsubB?.();
   unsubT?.();
 });
 
-// ─── Filtros y stats ───
+// ─── Filtros, búsqueda y paginación ───
 const mxn = (n: number) => '$' + n.toLocaleString('es-MX');
 const fmtDate = (d: string) =>
   d
@@ -124,42 +134,69 @@ const fmtDate = (d: string) =>
       })
     : '-';
 const fmtTime = (b: SpaceBooking) =>
-  b.mode === 'day' ? 'Día completo' : `${b.startHour}:00 – ${b.endHour}:00`;
+  b.mode === 'day' ? 'Día completo' : `${b.startHour}:00 - ${b.endHour}:00`;
 const fmtCreated = (ms: number) =>
   ms ? new Date(ms).toLocaleDateString('es-MX', { day: 'numeric', month: 'short' }) : '-';
 
 const todayKey = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' });
 
 const bookingsFiltered = computed(() => {
-  const list = statusFilter.value === 'todas'
-    ? bookings.value
-    : bookings.value.filter((b) => b.status === statusFilter.value);
+  const q = search.value.trim().toLowerCase();
+  const list = bookings.value.filter((b) => {
+    if (statusFilter.value !== 'todas' && b.status !== statusFilter.value) return false;
+    if (!q) return true;
+    return (
+      b.folio.toLowerCase().includes(q) ||
+      b.spaceName.toLowerCase().includes(q) ||
+      (b.guests?.name || '').toLowerCase().includes(q) ||
+      (b.guests?.email || '').toLowerCase().includes(q) ||
+      (b.guests?.company || '').toLowerCase().includes(q)
+    );
+  });
   return [...list].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 });
-const toursFiltered = computed(() =>
-  statusFilter.value === 'todas'
-    ? tours.value
-    : tours.value.filter((t) => t.status === statusFilter.value),
+
+const toursFiltered = computed(() => {
+  const q = search.value.trim().toLowerCase();
+  return tours.value.filter((t) => {
+    if (statusFilter.value !== 'todas' && t.status !== statusFilter.value) return false;
+    if (!q) return true;
+    return (
+      t.folio.toLowerCase().includes(q) ||
+      t.name.toLowerCase().includes(q) ||
+      (t.company || '').toLowerCase().includes(q) ||
+      t.email.toLowerCase().includes(q)
+    );
+  });
+});
+
+const activeCount = computed(() =>
+  tab.value === 'reservas' ? bookingsFiltered.value.length : toursFiltered.value.length,
 );
 
-const stats = computed(() => {
-  const confirmed = bookings.value.filter((b) => b.status === 'confirmed');
-  const monthKey = todayKey.slice(0, 7);
-  return {
-    today: bookings.value.filter((b) => b.date === todayKey).length,
-    monthRevenue: confirmed
-      .filter((b) => b.date.startsWith(monthKey))
-      .reduce((s, b) => s + b.totalMxn, 0),
-    newTours: tours.value.filter((t) => t.status === 'new').length,
-    total: bookings.value.length,
-  };
+const pageCount = computed(() => Math.max(1, Math.ceil(activeCount.value / pageSize)));
+
+const pagedBookings = computed(() =>
+  bookingsFiltered.value.slice((page.value - 1) * pageSize, page.value * pageSize),
+);
+
+const pagedTours = computed(() =>
+  toursFiltered.value.slice((page.value - 1) * pageSize, page.value * pageSize),
+);
+
+watch([tab, statusFilter, search], () => {
+  page.value = 1;
+});
+
+watch(tab, () => {
+  statusFilter.value = 'todas';
+});
+
+watch(pageCount, (pages) => {
+  if (page.value > pages) page.value = pages;
 });
 
 // ─── Acciones ───
-/// 'completed' NO está en el select - solo se alcanza por el panel de
-/// folio del dashboard (checked_in_at/by). Revertir limpia el sello.
-/// NINGÚN select muta directo: abre modal de confirmación primero;
-/// `selectReset` remonta los selects si se cancela.
 type PendingAction = {
   kind: 'booking' | 'tour';
   id: string;
@@ -172,8 +209,14 @@ type PendingAction = {
 };
 
 const pendingAction = ref<PendingAction | null>(null);
+const actionReason = ref('');
 const actionBusy = ref(false);
 const selectReset = ref(0);
+
+const reasonRequired = computed(() => {
+  const v = pendingAction.value?.toValue;
+  return v === 'cancelled' || v === 'no_show';
+});
 
 const confirmOpen = computed({
   get: () => pendingAction.value !== null,
@@ -192,8 +235,6 @@ function statusLabel(
 const CHECK_IN_WARN =
   'La reserva ya tiene acceso confirmado; el sello de llegada (hora y staff) se borrará.';
 
-/// Una reserva con acceso confirmado (completed) solo la puede mover
-/// admin/gerente - recepción la deja bloqueada (espejo de firestore.rules).
 const canEditCompleted = computed(() => {
   const r = session.value?.role;
   return r === 'ADMIN' || r === 'MANAGER';
@@ -203,9 +244,8 @@ function bookingStatusLocked(b: SpaceBooking): boolean {
   return b.status === 'completed' && !canEditCompleted.value;
 }
 
-function askBookingStatus(b: SpaceBooking, event: Event): void {
+function askBookingStatus(b: SpaceBooking, status: string): void {
   if (bookingStatusLocked(b)) return;
-  const status = (event.target as HTMLSelectElement).value;
   if (status === b.status) return;
   pendingAction.value = {
     kind: 'booking',
@@ -225,11 +265,10 @@ function askBookingStatus(b: SpaceBooking, event: Event): void {
 function bookingStatusOptions(b: SpaceBooking) {
   return BOOKING_STATUSES.filter(
     (s) => s.value !== 'completed' || b.status === 'completed',
-  );
+  ).map((s) => ({ label: s.label, value: s.value }));
 }
 
-function askTourStatus(t: TourRequest, event: Event): void {
-  const status = (event.target as HTMLSelectElement).value;
+function askTourStatus(t: TourRequest, status: string): void {
   if (status === t.status) return;
   pendingAction.value = {
     kind: 'tour',
@@ -246,11 +285,18 @@ function askTourStatus(t: TourRequest, event: Event): void {
 async function applyPendingAction(): Promise<void> {
   const a = pendingAction.value;
   if (!a || actionBusy.value) return;
+  const reason = actionReason.value.trim();
+  if (reasonRequired.value && !reason) return;
   actionBusy.value = true;
   savingId.value = a.id;
   try {
+    const auditFields = {
+      ...(reason ? { notes: reason } : {}),
+      status_updated_by: session.value?.name || session.value?.email || 'Staff',
+      status_updated_at: Date.now(),
+    };
     if (a.kind === 'booking') {
-      const patch: Record<string, unknown> = { status: a.toValue };
+      const patch: Record<string, unknown> = { status: a.toValue, ...auditFields };
       if (a.toValue !== 'completed') {
         const current = bookings.value.find((b) => b.id === a.id);
         if (current?.checkedInAt || current?.checkedInBy) {
@@ -260,9 +306,17 @@ async function applyPendingAction(): Promise<void> {
       }
       await updateDoc(doc(db!, 'space_bookings', a.id), patch);
     } else {
-      await updateDoc(doc(db!, 'tour_requests', a.id), { status: a.toValue });
+      await updateDoc(doc(db!, 'tour_requests', a.id), {
+        status: a.toValue,
+        ...auditFields,
+      });
     }
+    $api('/api/agenda-web/notify-status', {
+      method: 'POST',
+      body: { kind: a.kind, id: a.id, status: a.toValue, reason: reason || undefined },
+    }).catch(() => {});
     pendingAction.value = null;
+    actionReason.value = '';
   } finally {
     actionBusy.value = false;
     savingId.value = null;
@@ -271,204 +325,359 @@ async function applyPendingAction(): Promise<void> {
 
 function cancelPendingAction(): void {
   pendingAction.value = null;
+  actionReason.value = '';
   selectReset.value += 1;
 }
 
-const statusBadge: Record<string, string> = {
-  /// Vigente (azul) = reserva activa; Completada (verde) = acceso ya
-  /// confirmado en recepción por folio.
-  confirmed: 'bg-sky-500/15 text-sky-400',
-  completed: 'bg-emerald-500/15 text-emerald-400',
-  no_show: 'bg-amber-500/15 text-amber-400',
-  cancelled: 'bg-red-500/15 text-red-400',
-  new: 'bg-accent/15 text-accent',
-  contacted: 'bg-sky-500/15 text-sky-400',
-  done: 'bg-emerald-500/15 text-emerald-400',
+const statusMeta: Record<string, { cls: string; dot: string }> = {
+  pending: {
+    cls: 'border-amber-500/35 bg-amber-500/15 text-amber-400',
+    dot: 'bg-amber-500',
+  },
+  confirmed: {
+    cls: 'border-accent/35 bg-accent/15 text-accent',
+    dot: 'bg-accent',
+  },
+  completed: {
+    cls: 'border-emerald-500/35 bg-emerald-500/15 text-emerald-400',
+    dot: 'bg-emerald-500',
+  },
+  no_show: {
+    cls: 'border-amber-500/35 bg-amber-500/15 text-amber-400',
+    dot: 'bg-amber-500',
+  },
+  cancelled: {
+    cls: 'border-red-500/35 bg-red-500/15 text-red-400',
+    dot: 'bg-red-500',
+  },
+  new: {
+    cls: 'border-amber-500/35 bg-amber-500/15 text-amber-400',
+    dot: 'bg-amber-500',
+  },
+  contacted: {
+    cls: 'border-accent/35 bg-accent/15 text-accent',
+    dot: 'bg-accent',
+  },
+  done: {
+    cls: 'border-emerald-500/35 bg-emerald-500/15 text-emerald-400',
+    dot: 'bg-emerald-500',
+  },
 };
 </script>
 
 <template>
-  <div class="mx-auto max-w-7xl px-5 py-8 lg:px-8">
-    <!-- Header -->
-    <div class="flex flex-wrap items-end justify-between gap-4">
-      <div>
-        <p class="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.2em] text-accent">
-          <CalendarClock class="h-4 w-4" /> Agenda web
-        </p>
-        <h1 class="mt-1 text-2xl font-black tracking-tight text-text-primary">
-          Reservas y tours del sitio público
-        </h1>
-      </div>
+  <div class="space-y-6">
+    <!-- Tabs globales prominentes: RESERVAS y TOURS -->
+    <div class="grid grid-cols-2 gap-3 rounded-2xl border border-stroke bg-surface p-1.5">
       <button
-        class="flex items-center gap-2 rounded-full border border-stroke px-4 py-2 text-xs font-bold text-text-secondary transition hover:bg-base"
-        @click="pending = true; bookings.value = []; tours.value = []">
-        <RefreshCw class="h-3.5 w-3.5" :class="pending && 'animate-spin'" /> Recargar
+        type="button"
+        class="flex cursor-pointer items-center justify-center gap-2.5 rounded-xl px-5 py-3 text-sm font-black uppercase tracking-widest transition"
+        :class="
+          tab === 'reservas'
+            ? 'bg-accent text-base'
+            : 'text-text-muted hover:bg-surface-elevated hover:text-text-primary'
+        "
+        @click="tab = 'reservas'"
+      >
+        <Ticket class="h-4 w-4" />
+        <span>Reservas</span>
+        <span
+          class="rounded-md px-2 py-0.5 text-[11px] font-bold"
+          :class="tab === 'reservas' ? 'bg-base/20 text-base' : 'bg-base text-text-dim'"
+        >
+          {{ bookings.length }}
+        </span>
+      </button>
+      <button
+        type="button"
+        class="flex cursor-pointer items-center justify-center gap-2.5 rounded-xl px-5 py-3 text-sm font-black uppercase tracking-widest transition"
+        :class="
+          tab === 'tours'
+            ? 'bg-accent text-base'
+            : 'text-text-muted hover:bg-surface-elevated hover:text-text-primary'
+        "
+        @click="tab = 'tours'"
+      >
+        <User class="h-4 w-4" />
+        <span>Tours</span>
+        <span
+          class="rounded-md px-2 py-0.5 text-[11px] font-bold"
+          :class="tab === 'tours' ? 'bg-base/20 text-base' : 'bg-base text-text-dim'"
+        >
+          {{ tours.length }}
+        </span>
       </button>
     </div>
 
-    <!-- KPIs -->
-    <div class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      <div class="rounded-2xl border border-stroke bg-surface p-5">
-        <p class="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-text-dim">
-          <Ticket class="h-3.5 w-3.5" /> Reservas hoy
-        </p>
-        <p class="mt-2 text-3xl font-black text-text-primary">{{ stats.today }}</p>
-      </div>
-      <div class="rounded-2xl border border-stroke bg-surface p-5">
-        <p class="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-text-dim">
-          <CircleDollarSign class="h-3.5 w-3.5" /> Ingresos del mes
-        </p>
-        <p class="mt-2 text-3xl font-black text-text-primary">{{ mxn(stats.monthRevenue) }}</p>
-      </div>
-      <div class="rounded-2xl border border-stroke bg-surface p-5">
-        <p class="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-text-dim">
-          <User class="h-3.5 w-3.5" /> Tours nuevos
-        </p>
-        <p class="mt-2 text-3xl font-black text-text-primary">{{ stats.newTours }}</p>
-      </div>
-      <div class="rounded-2xl border border-stroke bg-surface p-5">
-        <p class="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-text-dim">
-          <CalendarClock class="h-3.5 w-3.5" /> Reservas totales
-        </p>
-        <p class="mt-2 text-3xl font-black text-text-primary">{{ stats.total }}</p>
-      </div>
-    </div>
-
-    <!-- Tabs + filtro -->
-    <div class="mt-8 flex flex-wrap items-center justify-between gap-3">
-      <div class="flex rounded-full border border-stroke p-1">
+    <!-- Encabezado descriptivo + Pills de estado -->
+    <section>
+      <h2 class="mb-3 text-sm font-black uppercase tracking-widest text-text-muted">
+        {{ tab === 'reservas' ? 'Reservas del sitio público' : 'Solicitudes de tour del sitio público' }}
+      </h2>
+      <div class="flex flex-wrap items-center gap-2">
         <button
-          class="rounded-full px-5 py-2 text-xs font-bold uppercase tracking-wider transition"
-          :class="tab === 'reservas' ? 'bg-accent text-white' : 'text-text-dim hover:text-text-primary'"
-          @click="tab = 'reservas'">
-          Reservas <span class="opacity-70">({{ bookings.length }})</span>
+          type="button"
+          class="cursor-pointer rounded-full border px-4 py-1.5 text-xs font-bold transition"
+          :class="
+            statusFilter === 'todas'
+              ? 'border-accent bg-accent/15 text-accent'
+              : 'border-stroke bg-surface text-text-muted hover:text-text-primary'
+          "
+          @click="statusFilter = 'todas'"
+        >
+          Todos
         </button>
         <button
-          class="rounded-full px-5 py-2 text-xs font-bold uppercase tracking-wider transition"
-          :class="tab === 'tours' ? 'bg-accent text-white' : 'text-text-dim hover:text-text-primary'"
-          @click="tab = 'tours'">
-          Tours <span class="opacity-70">({{ tours.length }})</span>
-        </button>
-      </div>
-      <select
-        v-model="statusFilter"
-        class="rounded-full border border-stroke bg-surface px-4 py-2 text-xs font-bold text-text-primary">
-        <option value="todas">Todos los estados</option>
-        <option v-for="s in tab === 'reservas' ? BOOKING_STATUSES : TOUR_STATUSES" :key="s.value" :value="s.value">
+          v-for="s in tab === 'reservas' ? BOOKING_STATUSES : TOUR_STATUSES"
+          :key="s.value"
+          type="button"
+          class="cursor-pointer rounded-full border px-4 py-1.5 text-xs font-bold transition"
+          :class="
+            statusFilter === s.value
+              ? 'border-accent bg-accent/15 text-accent'
+              : 'border-stroke bg-surface text-text-muted hover:text-text-primary'
+          "
+          @click="statusFilter = s.value"
+        >
           {{ s.label }}
-        </option>
-      </select>
+        </button>
+      </div>
+    </section>
+
+    <!-- Barra de herramientas: Buscador + Contador + Recargar -->
+    <div class="flex flex-wrap items-center gap-4">
+      <UInput
+        v-model="search"
+        icon="i-lucide-search"
+        placeholder="Buscar por folio, cliente o espacio…"
+        class="w-full max-w-sm"
+        size="lg"
+      />
+      <span class="rounded-full border border-stroke bg-surface px-3 py-1 text-[11px] font-bold text-text-muted">
+        {{ activeCount }} {{ tab === 'reservas' ? 'reservas' : 'tours' }}
+      </span>
+      <button
+        type="button"
+        class="ml-auto flex shrink-0 cursor-pointer items-center gap-2 rounded-full border border-stroke bg-surface px-5 py-2.5 text-xs font-bold text-text-primary transition hover:border-accent hover:text-accent"
+        @click="subscribe"
+      >
+        <RefreshCw class="h-3.5 w-3.5" :class="pending && 'animate-spin'" />
+        Recargar
+      </button>
     </div>
 
-    <!-- Reservas -->
-    <div v-if="tab === 'reservas'" class="mt-4 space-y-3">
-      <div v-if="pending" class="py-16 text-center text-sm text-text-dim">Cargando reservas…</div>
-      <div v-else-if="!bookingsFiltered.length"
-        class="rounded-2xl border border-dashed border-stroke py-16 text-center text-sm text-text-dim">
-        Sin reservas con este filtro.
-      </div>
-      <article v-for="b in bookingsFiltered" :key="b.id"
-        class="rounded-2xl border border-stroke bg-surface p-5">
-        <div class="flex flex-wrap items-start justify-between gap-4">
-          <div class="min-w-0">
-            <div class="flex flex-wrap items-center gap-2">
-              <span class="font-mono text-sm font-bold tracking-wider text-accent">{{ b.folio }}</span>
-              <span class="rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider"
-                :class="statusBadge[b.status]">
-                {{ BOOKING_STATUSES.find((s) => s.value === b.status)?.label ?? b.status }}
-              </span>
-              <span class="rounded-full bg-base px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-text-dim">
+    <!-- Tabla paginada: Reservas -->
+    <div v-if="tab === 'reservas'" class="overflow-hidden rounded-2xl border border-stroke bg-surface">
+      <table class="w-full text-left">
+        <thead>
+          <tr class="border-b border-stroke text-[10px] uppercase tracking-widest text-text-dim">
+            <th class="px-5 py-3 font-bold">Folio</th>
+            <th class="px-5 py-3 font-bold">Espacio</th>
+            <th class="px-5 py-3 font-bold">Fecha y hora</th>
+            <th class="px-5 py-3 font-bold">Cliente</th>
+            <th class="px-5 py-3 font-bold">Total</th>
+            <th class="px-5 py-3 font-bold">Estado</th>
+            <th class="px-5 py-3 text-right font-bold">Acción</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="b in pagedBookings" :key="b.id" class="border-t border-stroke">
+            <td class="px-5 py-3.5">
+              <p class="font-mono text-xs font-bold tracking-wider text-accent">{{ b.folio }}</p>
+              <span
+                class="mt-1 inline-flex items-center rounded-md border border-stroke bg-base px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-text-dim"
+              >
                 {{ b.source === 'web' ? 'Sitio web' : 'B2B' }}
               </span>
-            </div>
-            <h3 class="mt-1.5 text-base font-bold text-text-primary">{{ b.spaceName }}</h3>
-            <p class="mt-0.5 text-sm text-text-secondary">
-              {{ fmtDate(b.date) }} · {{ fmtTime(b) }} · {{ b.people }} pers.
-            </p>
-            <div class="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-text-dim">
-              <span class="flex items-center gap-1"><User class="h-3 w-3" /> {{ b.guests?.name }}</span>
-              <span class="flex items-center gap-1"><Mail class="h-3 w-3" /> {{ b.guests?.email }}</span>
-              <span v-if="b.guests?.phone" class="flex items-center gap-1"><Phone class="h-3 w-3" /> {{ b.guests.phone }}</span>
-              <span v-if="b.guests?.company">· {{ b.guests.company }}</span>
-            </div>
-          </div>
-          <div class="flex items-center gap-4">
-            <div class="text-right">
-              <p class="font-display text-xl font-bold text-text-primary">{{ mxn(b.totalMxn) }}</p>
-              <p class="text-[10px] uppercase tracking-wider text-text-dim">{{ fmtCreated(b.createdAt) }}</p>
-            </div>
-            <span
-              v-if="bookingStatusLocked(b)"
-              class="flex items-center gap-1.5 rounded-lg border border-stroke bg-base px-3 py-2 text-[11px] font-bold text-text-dim"
-              title="Acceso ya confirmado - solo gerente puede cambiar el estado"
-            >
-              <Lock class="h-3.5 w-3.5" /> Requiere gerente
-            </span>
-            <select
-              v-else
-              :key="`${b.id}-${selectReset}`"
-              :value="b.status"
-              :disabled="savingId === b.id"
-              class="rounded-lg border border-stroke bg-base px-3 py-2 text-xs font-bold text-text-primary disabled:opacity-50"
-              @change="askBookingStatus(b, $event)">
-              <option v-for="s in bookingStatusOptions(b)" :key="s.value" :value="s.value">{{ s.label }}</option>
-            </select>
-          </div>
+            </td>
+            <td class="px-5 py-3.5">
+              <p class="text-xs font-bold text-text-primary">{{ b.spaceName }}</p>
+              <p class="text-[10px] text-text-dim">{{ b.people }} pers.</p>
+            </td>
+            <td class="px-5 py-3.5 whitespace-nowrap">
+              <p class="text-xs font-medium text-text-secondary">{{ fmtDate(b.date) }}</p>
+              <p class="font-mono text-[11px] font-semibold text-accent">{{ fmtTime(b) }}</p>
+            </td>
+            <td class="px-5 py-3.5">
+              <p class="text-xs font-semibold text-text-primary">
+                {{ b.guests?.name || '-' }}
+                <span v-if="b.guests?.company" class="font-normal text-text-dim">· {{ b.guests.company }}</span>
+              </p>
+              <p class="mt-0.5 flex flex-wrap items-center gap-x-3 text-[10px] text-text-dim">
+                <span v-if="b.guests?.email" class="inline-flex items-center gap-1">
+                  <Mail class="h-3 w-3" /> {{ b.guests.email }}
+                </span>
+                <span v-if="b.guests?.phone" class="inline-flex items-center gap-1">
+                  <Phone class="h-3 w-3" /> {{ b.guests.phone }}
+                </span>
+              </p>
+            </td>
+            <td class="px-5 py-3.5 whitespace-nowrap">
+              <p class="text-xs font-bold text-text-primary">{{ mxn(b.totalMxn) }}</p>
+              <p class="text-[10px] text-text-dim">{{ fmtCreated(b.createdAt) }}</p>
+            </td>
+            <td class="px-5 py-3.5">
+              <span
+                class="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider"
+                :class="statusMeta[b.status]?.cls ?? 'border-stroke bg-base text-text-muted'"
+              >
+                <span class="h-1.5 w-1.5 rounded-full" :class="statusMeta[b.status]?.dot ?? 'bg-text-dim'" />
+                {{ BOOKING_STATUSES.find((s) => s.value === b.status)?.label ?? b.status }}
+              </span>
+            </td>
+            <td class="px-5 py-3.5 text-right">
+              <span
+                v-if="bookingStatusLocked(b)"
+                class="inline-flex items-center gap-1.5 rounded-xl border border-stroke bg-base px-3 py-1.5 text-[11px] font-bold text-text-dim"
+                title="Acceso ya confirmado - solo gerente puede cambiar el estado"
+              >
+                <Lock class="h-3.5 w-3.5" /> Requiere gerente
+              </span>
+              <USelect
+                v-else
+                :key="`${b.id}-${selectReset}`"
+                :model-value="b.status"
+                :items="bookingStatusOptions(b)"
+                value-key="value"
+                label-key="label"
+                size="sm"
+                :disabled="savingId === b.id"
+                class="w-36 text-left"
+                @update:model-value="(val) => askBookingStatus(b, String(val))"
+              />
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <p v-if="pending" class="py-10 text-center text-xs font-semibold text-text-dim">Cargando reservas…</p>
+      <p v-else-if="pagedBookings.length === 0" class="py-10 text-center text-xs font-semibold text-text-dim">
+        Sin reservas que coincidan con el filtro
+      </p>
+      <div v-if="bookingsFiltered.length > 0" class="flex items-center justify-between border-t border-stroke px-5 py-2.5">
+        <p class="text-[10px] font-semibold text-text-dim">
+          {{ bookingsFiltered.length }} reservas · página {{ page }} de {{ pageCount }}
+        </p>
+        <div class="flex gap-1.5">
+          <button
+            type="button"
+            class="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border border-stroke text-text-muted transition hover:border-accent hover:text-accent disabled:opacity-30"
+            :disabled="page === 1"
+            @click="page--"
+          >
+            <ChevronLeft class="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            class="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border border-stroke text-text-muted transition hover:border-accent hover:text-accent disabled:opacity-30"
+            :disabled="page === pageCount"
+            @click="page++"
+          >
+            <ChevronRight class="h-3.5 w-3.5" />
+          </button>
         </div>
-      </article>
+      </div>
     </div>
 
-    <!-- Tours -->
-    <div v-else class="mt-4 space-y-3">
-      <div v-if="!toursFiltered.length"
-        class="rounded-2xl border border-dashed border-stroke py-16 text-center text-sm text-text-dim">
-        Sin solicitudes de tour con este filtro.
-      </div>
-      <article v-for="t in toursFiltered" :key="t.id"
-        class="rounded-2xl border border-stroke bg-surface p-5">
-        <div class="flex flex-wrap items-start justify-between gap-4">
-          <div class="min-w-0">
-            <div class="flex flex-wrap items-center gap-2">
-              <span class="font-mono text-sm font-bold tracking-wider text-accent">{{ t.folio }}</span>
-              <span class="rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider"
-                :class="statusBadge[t.status]">
+    <!-- Tabla paginada: Tours -->
+    <div v-else class="overflow-hidden rounded-2xl border border-stroke bg-surface">
+      <table class="w-full text-left">
+        <thead>
+          <tr class="border-b border-stroke text-[10px] uppercase tracking-widest text-text-dim">
+            <th class="px-5 py-3 font-bold">Folio</th>
+            <th class="px-5 py-3 font-bold">Solicitante</th>
+            <th class="px-5 py-3 font-bold">Contacto</th>
+            <th class="px-5 py-3 font-bold">Preferencia</th>
+            <th class="px-5 py-3 font-bold">Estado</th>
+            <th class="px-5 py-3 text-right font-bold">Acción</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="t in pagedTours" :key="t.id" class="border-t border-stroke">
+            <td class="px-5 py-3.5 whitespace-nowrap">
+              <p class="font-mono text-xs font-bold tracking-wider text-accent">{{ t.folio }}</p>
+              <p class="text-[10px] text-text-dim">{{ fmtCreated(t.createdAt) }}</p>
+            </td>
+            <td class="px-5 py-3.5">
+              <p class="text-xs font-bold text-text-primary">
+                {{ t.name }}
+                <span v-if="t.company" class="font-normal text-text-dim">· {{ t.company }}</span>
+              </p>
+              <p v-if="t.message" class="mt-0.5 max-w-xs truncate text-[10px] italic text-text-dim">
+                "{{ t.message }}"
+              </p>
+            </td>
+            <td class="px-5 py-3.5">
+              <p class="flex items-center gap-1 text-xs text-text-secondary">
+                <Mail class="h-3 w-3 text-text-dim" /> {{ t.email }}
+              </p>
+              <p class="mt-0.5 flex items-center gap-1 text-[10px] text-text-dim">
+                <Phone class="h-3 w-3" /> {{ t.phone }}
+              </p>
+            </td>
+            <td class="px-5 py-3.5 whitespace-nowrap">
+              <p class="text-xs font-medium text-text-secondary">
+                {{ t.preferredDate ? fmtDate(t.preferredDate) : 'Sin fecha' }}
+              </p>
+              <p class="text-[10px] text-text-dim">
+                {{ t.people }} pers. <span v-if="t.interest">· {{ t.interest }}</span>
+              </p>
+            </td>
+            <td class="px-5 py-3.5">
+              <span
+                class="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider"
+                :class="statusMeta[t.status]?.cls ?? 'border-stroke bg-base text-text-muted'"
+              >
+                <span class="h-1.5 w-1.5 rounded-full" :class="statusMeta[t.status]?.dot ?? 'bg-text-dim'" />
                 {{ TOUR_STATUSES.find((s) => s.value === t.status)?.label ?? t.status }}
               </span>
-            </div>
-            <h3 class="mt-1.5 text-base font-bold text-text-primary">{{ t.name }}
-              <span v-if="t.company" class="font-normal text-text-dim">· {{ t.company }}</span>
-            </h3>
-            <div class="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-text-dim">
-              <span class="flex items-center gap-1"><Mail class="h-3 w-3" /> {{ t.email }}</span>
-              <span class="flex items-center gap-1"><Phone class="h-3 w-3" /> {{ t.phone }}</span>
-              <span v-if="t.preferredDate">Prefiere: {{ fmtDate(t.preferredDate) }}</span>
-              <span>{{ t.people }} pers.</span>
-              <span v-if="t.interest">Interés: {{ t.interest }}</span>
-            </div>
-            <p v-if="t.message" class="mt-2 rounded-lg bg-base px-3 py-2 text-xs italic text-text-secondary">
-              “{{ t.message }}”
-            </p>
-          </div>
-          <div class="flex items-center gap-4">
-            <p class="text-[10px] uppercase tracking-wider text-text-dim">{{ fmtCreated(t.createdAt) }}</p>
-            <select
-              :key="`${t.id}-${selectReset}`"
-              :value="t.status"
-              :disabled="savingId === t.id"
-              class="rounded-lg border border-stroke bg-base px-3 py-2 text-xs font-bold text-text-primary disabled:opacity-50"
-              @change="askTourStatus(t, $event)">
-              <option v-for="s in TOUR_STATUSES" :key="s.value" :value="s.value">{{ s.label }}</option>
-            </select>
-          </div>
+            </td>
+            <td class="px-5 py-3.5 text-right">
+              <USelect
+                :key="`${t.id}-${selectReset}`"
+                :model-value="t.status"
+                :items="[...TOUR_STATUSES]"
+                value-key="value"
+                label-key="label"
+                size="sm"
+                :disabled="savingId === t.id"
+                class="w-36 text-left"
+                @update:model-value="(val) => askTourStatus(t, String(val))"
+              />
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <p v-if="pending" class="py-10 text-center text-xs font-semibold text-text-dim">Cargando tours…</p>
+      <p v-else-if="pagedTours.length === 0" class="py-10 text-center text-xs font-semibold text-text-dim">
+        Sin solicitudes de tour con este filtro
+      </p>
+      <div v-if="toursFiltered.length > 0" class="flex items-center justify-between border-t border-stroke px-5 py-2.5">
+        <p class="text-[10px] font-semibold text-text-dim">
+          {{ toursFiltered.length }} tours · página {{ page }} de {{ pageCount }}
+        </p>
+        <div class="flex gap-1.5">
+          <button
+            type="button"
+            class="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border border-stroke text-text-muted transition hover:border-accent hover:text-accent disabled:opacity-30"
+            :disabled="page === 1"
+            @click="page--"
+          >
+            <ChevronLeft class="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            class="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border border-stroke text-text-muted transition hover:border-accent hover:text-accent disabled:opacity-30"
+            :disabled="page === pageCount"
+            @click="page++"
+          >
+            <ChevronRight class="h-3.5 w-3.5" />
+          </button>
         </div>
-      </article>
+      </div>
     </div>
 
     <!-- Confirmación de cambios de estado -->
-    <UModal
-      v-model:open="confirmOpen"
-      title="Confirmar cambio"
-    >
+    <UModal v-model:open="confirmOpen" title="Confirmar cambio">
       <template #body>
         <template v-if="pendingAction">
           <p class="font-mono text-sm font-bold tracking-wider text-accent">{{ pendingAction.title }}</p>
@@ -484,19 +693,26 @@ const statusBadge: Record<string, string> = {
           >
             {{ pendingAction.warn }}
           </p>
+          <label class="mt-4 block">
+            <span class="text-[10px] font-bold uppercase tracking-widest text-text-dim">
+              Justificación o nota {{ reasonRequired ? '*' : '(opcional)' }}
+            </span>
+            <textarea
+              v-model="actionReason"
+              rows="2"
+              placeholder="Ej. Confirmado por teléfono / Solicitó reagendar…"
+              class="mt-1.5 w-full rounded-xl border border-stroke bg-base px-3 py-2 text-xs text-text-primary outline-none transition focus:border-accent"
+            />
+          </label>
         </template>
       </template>
       <template #footer>
         <div class="flex w-full justify-end gap-2">
-          <UButton
-            label="Cancelar"
-            color="neutral"
-            variant="outline"
-            @click="cancelPendingAction"
-          />
+          <UButton label="Cancelar" color="neutral" variant="outline" @click="cancelPendingAction" />
           <UButton
             :label="pendingAction?.toLabel ?? 'Confirmar'"
             :loading="actionBusy"
+            :disabled="reasonRequired && !actionReason.trim()"
             color="primary"
             @click="applyPendingAction"
           />

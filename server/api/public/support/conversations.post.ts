@@ -2,6 +2,9 @@ import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 
 import type { SupportMessage } from '#shared/types';
 
+import { getAiPilotConfig, isWithinPilotSchedule } from '../../../utils/ai-pilot/config';
+import { runAiPilotTurn } from '../../../utils/ai-pilot/engine';
+import { getBusinessFeatures } from '../../../utils/config';
 import { db } from '../../../utils/db';
 import { sendStaffTopicPush } from '../../../utils/public-notify';
 import {
@@ -54,7 +57,16 @@ export default defineEventHandler(async (event): Promise<{
     });
   }
 
-  const branchId = await resolveDefaultBranchId();
+  const [branchId, features, pilotCfg] = await Promise.all([
+    resolveDefaultBranchId(),
+    getBusinessFeatures(),
+    getAiPilotConfig(),
+  ]);
+  const autoPilotActive =
+    Boolean(features.ai_autopilot?.enabled) &&
+    pilotCfg.enabled &&
+    isWithinPilotSchedule(pilotCfg);
+
   const visitorToken = generateVisitorToken();
   const visitorTokenHash = hashVisitorToken(visitorToken);
 
@@ -72,11 +84,15 @@ export default defineEventHandler(async (event): Promise<{
     visitor_token_hash: visitorTokenHash,
     branch_id: branchId,
     status: 'open',
+    ai_mode: autoPilotActive ? 'auto' : 'human',
+    escalated: false,
+    escalation_reason: null,
+    ai_turns_count: 0,
     created_at: now,
     last_message_at: now,
     last_message_preview: messageText.slice(0, 100),
     unread_member: 0,
-    unread_staff: 1,
+    unread_staff: autoPilotActive ? 0 : 1,
     expires_at: expiresAt,
   });
   batch.set(msgRef, {
@@ -89,14 +105,19 @@ export default defineEventHandler(async (event): Promise<{
   });
   await batch.commit();
 
-  // Notificación push best-effort al tópico de recepción
-  event.waitUntil(
-    sendStaffTopicPush({
-      title: `Nuevo chat web: ${name}`,
-      body: messageText.slice(0, 120),
-      data: { kind: 'support', source: 'web', conversation_id: convRef.id, route: '/soporte' },
-    }).catch(() => undefined),
-  );
+  if (autoPilotActive) {
+    // Atiende el AI Pilot en segundo plano; solo alertará al staff si escala a humano
+    event.waitUntil(runAiPilotTurn(convRef.id));
+  } else {
+    // Sin piloto activo: notificación push best-effort al tópico de recepción
+    event.waitUntil(
+      sendStaffTopicPush({
+        title: `Nuevo chat web: ${name}`,
+        body: messageText.slice(0, 120),
+        data: { kind: 'support', source: 'web', conversation_id: convRef.id, route: '/soporte' },
+      }).catch(() => undefined),
+    );
+  }
 
   return {
     conversationId: convRef.id,

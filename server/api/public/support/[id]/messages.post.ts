@@ -2,6 +2,7 @@ import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 
 import type { SupportMessage } from '#shared/types';
 
+import { runAiPilotTurn } from '../../../../utils/ai-pilot/engine';
 import { db } from '../../../../utils/db';
 import { readVisitorToken, verifyVisitorToken } from '../../../../utils/public-support';
 import { rateLimit } from '../../../../utils/rate-limit';
@@ -49,6 +50,8 @@ export default defineEventHandler(async (event): Promise<SupportMessage> => {
   const now = FieldValue.serverTimestamp();
   const expiresAt = Timestamp.fromMillis(Date.now() + 24 * 60 * 60 * 1000);
 
+  const isAuto = conv.ai_mode === 'auto';
+
   await db().runTransaction(async (tx) => {
     tx.set(msgRef, {
       sender: 'member',
@@ -58,13 +61,20 @@ export default defineEventHandler(async (event): Promise<SupportMessage> => {
       read: false,
       expires_at: expiresAt,
     });
-    tx.update(convRef, {
+    const convUpdate: Record<string, unknown> = {
       last_message_at: now,
       last_message_preview: text.slice(0, 100),
-      unread_staff: FieldValue.increment(1),
       expires_at: expiresAt,
-    });
+    };
+    if (!isAuto) {
+      convUpdate.unread_staff = FieldValue.increment(1);
+    }
+    tx.update(convRef, convUpdate);
   });
+
+  if (isAuto) {
+    event.waitUntil(runAiPilotTurn(id));
+  }
 
   return {
     id: msgRef.id,

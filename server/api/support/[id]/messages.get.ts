@@ -50,7 +50,7 @@ export default defineEventHandler(async (event): Promise<SupportMessage[]> => {
     return {
       id: d.id,
       conversationId: id,
-      sender: data.sender === 'staff' ? 'staff' : 'member',
+      sender: data.sender === 'staff' ? 'staff' : data.sender === 'ai' ? 'ai' : 'member',
       senderName: String(data.sender_name ?? ''),
       text: String(data.text ?? ''),
       createdAt: data.created_at?.toMillis?.() ?? Date.now(),

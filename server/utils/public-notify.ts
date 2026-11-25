@@ -3,14 +3,18 @@ import type { H3Event } from 'h3';
 import { db } from './db';
 import { useAdmin } from './firebase-admin';
 
-/// Resuelve correos de notificación del negocio: env (`BUSINESS_NOTIFY_EMAIL` /
-/// `MAIL_TO`) + staff activo (ADMIN / MANAGER / RECEPTIONIST) con correo en Auth.
+/// Resuelve correos de notificación del negocio: si `BUSINESS_NOTIFY_EMAIL` (o
+/// `MAIL_TO`) tiene correos configurados, envía únicamente a esa lista; solo si
+/// está vacía recurre al staff activo en Firestore/Auth.
 export async function resolveStaffNotifyEmails(): Promise<string[]> {
   const emails = new Set<string>();
   const envRaw = process.env.BUSINESS_NOTIFY_EMAIL || process.env.MAIL_TO || '';
   for (const part of envRaw.split(',')) {
     const clean = part.trim().toLowerCase();
     if (clean) emails.add(clean);
+  }
+  if (emails.size > 0) {
+    return Array.from(emails);
   }
   try {
     const staffSnap = await db().collection('staff').get();

@@ -557,6 +557,7 @@ export interface AdsReportResponse {
 
 export type ConversationStatus = 'open' | 'resolved';
 export type ConversationSource = 'app' | 'web';
+export type AiMode = 'auto' | 'human';
 
 export interface Conversation {
   id: string;
@@ -566,6 +567,11 @@ export interface Conversation {
   visitorPhone?: string | null;
   branchId: string;
   status: ConversationStatus;
+  /// Modo operativo del chat: 'auto' (atendido por AI Pilot) o 'human' (staff)
+  aiMode?: AiMode;
+  escalated?: boolean;
+  escalationReason?: string | null;
+  aiTurnsCount?: number;
   createdAt: number;
   lastMessageAt: number;
   lastMessagePreview: string;
@@ -578,7 +584,7 @@ export interface Conversation {
 export interface SupportMessage {
   id: string;
   conversationId: string;
-  sender: 'member' | 'staff';
+  sender: 'member' | 'staff' | 'ai';
   senderName: string;
   text: string;
   createdAt: number;
@@ -799,6 +805,37 @@ export interface MemberAiHostChatResponse {
   aiPowered: boolean;
 }
 
+export interface AiPilotFaq {
+  q: string;
+  a: string;
+}
+
+export type AiPilotTone = 'ejecutivo' | 'cercano' | 'directo';
+export type AiPilotScheduleMode = 'always' | 'after_hours';
+
+export interface AiPilotConfig {
+  enabled: boolean;
+  agentName: string;
+  tone: AiPilotTone;
+  scheduleMode: AiPilotScheduleMode;
+  customInstructions: string;
+  faqs: AiPilotFaq[];
+  tools: {
+    checkAvailability: boolean;
+    createTour: boolean;
+  };
+  maxAutoTurns: number;
+  updatedAt?: number;
+}
+
+export interface AiPilotSimulationResult {
+  reply: string;
+  escalated: boolean;
+  escalationReason: string | null;
+  toolsUsed: Array<{ name: string; args: Record<string, unknown> }>;
+  aiPowered: boolean;
+}
+
 export interface BusinessFeatures {
   ai_churn_prediction: {
     enabled: boolean;
@@ -812,6 +849,10 @@ export interface BusinessFeatures {
       vertex_location?: string;
       vertex_endpoint_id?: string;
     };
+  };
+  ai_autopilot?: {
+    enabled: boolean;
+    plan: 'basic' | 'premium' | 'enterprise';
   };
 }
 

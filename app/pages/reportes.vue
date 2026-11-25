@@ -11,6 +11,8 @@ import {
   Activity,
   AlertTriangle,
   ArrowRight,
+  BookOpen,
+  Bot,
   Brain,
   CalendarClock,
   CheckCircle2,
@@ -25,10 +27,12 @@ import {
   Ticket,
   User,
   Users,
+  Wrench,
 } from '@lucide/vue';
 
 import type {
   AdsReportResponse,
+  AiPilotConfig,
   Branch,
   CheckInsReport,
   PaymentsReport,
@@ -72,9 +76,52 @@ const {
 const isAiEnabled = computed(
   () => Boolean(runtimeConfig.public.features?.churnRetention),
 );
+const isAutopilotEnabled = computed(
+  () => Boolean(runtimeConfig.public.features?.aiAutopilot),
+);
 const canViewAi = computed(
   () => session.value?.role === 'ADMIN' || session.value?.role === 'MANAGER',
 );
+
+const pilotStats = ref<{
+  provisioned: boolean;
+  hasGeminiKey: boolean;
+  config: AiPilotConfig | null;
+}>({
+  provisioned: false,
+  hasGeminiKey: false,
+  config: null,
+});
+
+const pilotToolsCount = computed(() => {
+  const t = pilotStats.value.config?.tools;
+  if (!t) return 0;
+  return (t.checkAvailability ? 1 : 0) + (t.createTour ? 1 : 0);
+});
+
+const pilotIsLive = computed(
+  () => pilotStats.value.provisioned && pilotStats.value.config?.enabled === true,
+);
+
+const PILOT_TONE_LABELS: Record<string, string> = {
+  ejecutivo: 'Ejecutivo',
+  cercano: 'Cercano',
+  directo: 'Directo',
+};
+
+async function loadPilotStats(): Promise<void> {
+  if (!isAutopilotEnabled.value || !canViewAi.value) return;
+  try {
+    const res = await $api<{
+      provisioned: boolean;
+      hasGeminiKey: boolean;
+      config: AiPilotConfig;
+    }>('/api/ai-pilot/config');
+    pilotStats.value = res;
+  } catch {
+    /* opcional */
+  }
+}
 
 const aiKpis = ref({
   highRisk: 0,
@@ -236,6 +283,7 @@ function togglePaymentPlan(planId: string): void {
 onMounted(async () => {
   startLive();
   loadAiData();
+  loadPilotStats();
   if (db) {
     unsubWebB = onSnapshot(
       query(collection(db, 'space_bookings'), orderBy('created_at', 'desc'), limit(300)),
@@ -515,6 +563,111 @@ function exportCsv(): void {
             <CalendarClock class="h-4 w-4" />
           </div>
           <p class="mt-2 text-3xl font-semibold tracking-tight text-text-primary">{{ webAgendaStats.total }}</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Piloto IA: 4 KPIs del agente autónomo -->
+    <section v-if="isAutopilotEnabled && canViewAi" class="space-y-4">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <h2 class="text-sm font-black uppercase tracking-widest text-text-muted">
+          Piloto IA
+        </h2>
+        <NuxtLink
+          to="/piloto-ia"
+          class="flex cursor-pointer items-center gap-1.5 rounded-full border border-stroke bg-surface px-4 py-1.5 text-[11px] font-bold text-text-muted transition hover:border-accent hover:text-text-primary"
+        >
+          <span>Ir a Piloto IA</span>
+          <ArrowRight class="h-3.5 w-3.5" />
+        </NuxtLink>
+      </div>
+      <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div class="rounded-2xl border border-stroke bg-surface p-4">
+          <div class="flex items-center gap-2">
+            <Bot class="h-4 w-4" :class="pilotIsLive ? 'text-emerald-400' : 'text-amber-400'" />
+            <p class="text-[10px] font-bold uppercase tracking-widest text-text-dim">
+              Estado del piloto
+            </p>
+          </div>
+          <div class="mt-2 flex items-center gap-2">
+            <span
+              class="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider"
+              :class="
+                pilotIsLive
+                  ? 'border-emerald-400/35 bg-emerald-400/15 text-emerald-400'
+                  : 'border-amber-400/35 bg-amber-400/15 text-amber-400'
+              "
+            >
+              <span
+                class="h-1.5 w-1.5 rounded-full"
+                :class="pilotIsLive ? 'bg-emerald-400' : 'bg-amber-400'"
+              />
+              {{ pilotIsLive ? 'ACTIVO' : 'PAUSADO' }}
+            </span>
+          </div>
+          <p class="mt-1.5 text-[10px] font-semibold text-text-dim">
+            {{ pilotStats.config?.scheduleMode === 'after_hours' ? 'Solo fuera de horario' : 'Atención 24/7' }}
+          </p>
+        </div>
+
+        <div class="rounded-2xl border border-stroke bg-surface p-4">
+          <div class="flex items-center gap-2">
+            <Sparkles class="h-4 w-4 text-accent" />
+            <p class="text-[10px] font-bold uppercase tracking-widest text-text-dim">
+              Motor Gemini
+            </p>
+          </div>
+          <div class="mt-2 flex items-center gap-2">
+            <span
+              class="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider"
+              :class="
+                pilotStats.hasGeminiKey
+                  ? 'border-emerald-400/35 bg-emerald-400/15 text-emerald-400'
+                  : 'border-red-400/35 bg-red-400/15 text-red-400'
+              "
+            >
+              <span
+                class="h-1.5 w-1.5 rounded-full"
+                :class="pilotStats.hasGeminiKey ? 'bg-emerald-400' : 'bg-red-400'"
+              />
+              {{ pilotStats.hasGeminiKey ? 'CONECTADO' : 'SIN CLAVE' }}
+            </span>
+          </div>
+          <p class="mt-1.5 text-[10px] font-semibold text-text-dim">
+            Tono {{ PILOT_TONE_LABELS[pilotStats.config?.tone ?? 'ejecutivo'] }}
+          </p>
+        </div>
+
+        <div class="rounded-2xl border border-stroke bg-surface p-4">
+          <div class="flex items-center gap-2">
+            <Wrench class="h-4 w-4 text-accent" />
+            <p class="text-[10px] font-bold uppercase tracking-widest text-text-dim">
+              Herramientas
+            </p>
+          </div>
+          <p class="mt-2 text-xl font-black text-text-primary">
+            {{ pilotToolsCount }}
+            <span class="text-[11px] font-bold text-text-dim">/ 2</span>
+          </p>
+          <p class="text-[10px] font-semibold text-text-dim">
+            Disponibilidad · Tours
+          </p>
+        </div>
+
+        <div class="rounded-2xl border border-stroke bg-surface p-4">
+          <div class="flex items-center gap-2">
+            <BookOpen class="h-4 w-4 text-accent" />
+            <p class="text-[10px] font-bold uppercase tracking-widest text-text-dim">
+              Base de conocimiento
+            </p>
+          </div>
+          <p class="mt-2 text-xl font-black text-text-primary">
+            {{ pilotStats.config?.faqs?.length ?? 0 }}
+            <span class="text-[11px] font-bold text-text-dim">FAQs</span>
+          </p>
+          <p class="text-[10px] font-semibold text-text-dim">
+            Límite {{ pilotStats.config?.maxAutoTurns ?? 12 }} turnos por chat
+          </p>
         </div>
       </div>
     </section>

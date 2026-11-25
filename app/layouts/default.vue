@@ -2,6 +2,7 @@
 import {
   BarChart3,
   Bell,
+  Bot,
   Brain,
   Building2,
   CalendarClock,
@@ -106,6 +107,12 @@ const navGroups: { label: string | null; items: NavItem[] }[] = [
         icon: MessageCircle,
         roles: ['ADMIN', 'MANAGER', 'RECEPTIONIST'],
       },
+      {
+        to: '/piloto-ia',
+        label: 'Piloto IA',
+        icon: Bot,
+        roles: ['ADMIN', 'MANAGER'],
+      },
     ],
   },
   {
@@ -201,6 +208,10 @@ const visibleGroups = computed(() =>
       items: group.items.filter((item) => {
         // Módulo de Retención: solo visible si el programador lo activó para este cliente
         if (item.to === '/retencion' && !runtimeConfig.public.features?.churnRetention) {
+          return false;
+        }
+        // Módulo Piloto IA: solo visible si el programador activó AI_AUTOPILOT_ENABLED
+        if (item.to === '/piloto-ia' && !runtimeConfig.public.features?.aiAutopilot) {
           return false;
         }
         return item.roles.includes(session.value?.role ?? 'RECEPTIONIST');

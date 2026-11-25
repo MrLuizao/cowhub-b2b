@@ -477,18 +477,24 @@ const statusMeta: Record<string, { cls: string; dot: string }> = {
             <th class="px-5 py-3 font-bold">Cliente</th>
             <th class="px-5 py-3 font-bold">Total</th>
             <th class="px-5 py-3 font-bold">Estado</th>
-            <th class="px-5 py-3 text-right font-bold">Acción</th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="b in pagedBookings" :key="b.id" class="border-t border-stroke">
             <td class="px-5 py-3.5">
-              <p class="font-mono text-xs font-bold tracking-wider text-accent">{{ b.folio }}</p>
-              <span
-                class="mt-1 inline-flex items-center rounded-md border border-stroke bg-base px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-text-dim"
+              <NuxtLink
+                :to="`/agenda-web/reservas/${b.id}`"
+                class="font-mono text-xs font-bold tracking-wider text-accent hover:underline"
               >
-                {{ b.source === 'web' ? 'Sitio web' : 'B2B' }}
-              </span>
+                {{ b.folio }}
+              </NuxtLink>
+              <div>
+                <span
+                  class="mt-1 inline-flex items-center rounded-md border border-stroke bg-base px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-text-dim"
+                >
+                  {{ b.source === 'web' ? 'Sitio web' : 'B2B' }}
+                </span>
+              </div>
             </td>
             <td class="px-5 py-3.5">
               <p class="text-xs font-bold text-text-primary">{{ b.spaceName }}</p>
@@ -524,27 +530,6 @@ const statusMeta: Record<string, { cls: string; dot: string }> = {
                 <span class="h-1.5 w-1.5 rounded-full" :class="statusMeta[b.status]?.dot ?? 'bg-text-dim'" />
                 {{ BOOKING_STATUSES.find((s) => s.value === b.status)?.label ?? b.status }}
               </span>
-            </td>
-            <td class="px-5 py-3.5 text-right">
-              <span
-                v-if="bookingStatusLocked(b)"
-                class="inline-flex items-center gap-1.5 rounded-xl border border-stroke bg-base px-3 py-1.5 text-[11px] font-bold text-text-dim"
-                title="Acceso ya confirmado - solo gerente puede cambiar el estado"
-              >
-                <Lock class="h-3.5 w-3.5" /> Requiere gerente
-              </span>
-              <USelect
-                v-else
-                :key="`${b.id}-${selectReset}`"
-                :model-value="b.status"
-                :items="bookingStatusOptions(b)"
-                value-key="value"
-                label-key="label"
-                size="sm"
-                :disabled="savingId === b.id"
-                class="w-36 text-left"
-                @update:model-value="(val) => askBookingStatus(b, String(val))"
-              />
             </td>
           </tr>
         </tbody>
@@ -588,13 +573,17 @@ const statusMeta: Record<string, { cls: string; dot: string }> = {
             <th class="px-5 py-3 font-bold">Contacto</th>
             <th class="px-5 py-3 font-bold">Preferencia</th>
             <th class="px-5 py-3 font-bold">Estado</th>
-            <th class="px-5 py-3 text-right font-bold">Acción</th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="t in pagedTours" :key="t.id" class="border-t border-stroke">
             <td class="px-5 py-3.5 whitespace-nowrap">
-              <p class="font-mono text-xs font-bold tracking-wider text-accent">{{ t.folio }}</p>
+              <NuxtLink
+                :to="`/agenda-web/tours/${t.id}`"
+                class="font-mono text-xs font-bold tracking-wider text-accent hover:underline"
+              >
+                {{ t.folio }}
+              </NuxtLink>
               <p class="text-[10px] text-text-dim">{{ fmtCreated(t.createdAt) }}</p>
             </td>
             <td class="px-5 py-3.5">
@@ -630,19 +619,6 @@ const statusMeta: Record<string, { cls: string; dot: string }> = {
                 <span class="h-1.5 w-1.5 rounded-full" :class="statusMeta[t.status]?.dot ?? 'bg-text-dim'" />
                 {{ TOUR_STATUSES.find((s) => s.value === t.status)?.label ?? t.status }}
               </span>
-            </td>
-            <td class="px-5 py-3.5 text-right">
-              <USelect
-                :key="`${t.id}-${selectReset}`"
-                :model-value="t.status"
-                :items="[...TOUR_STATUSES]"
-                value-key="value"
-                label-key="label"
-                size="sm"
-                :disabled="savingId === t.id"
-                class="w-36 text-left"
-                @update:model-value="(val) => askTourStatus(t, String(val))"
-              />
             </td>
           </tr>
         </tbody>

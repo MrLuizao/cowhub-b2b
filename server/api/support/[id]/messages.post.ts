@@ -2,6 +2,7 @@ import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 
 import type { SupportMessage } from '#shared/types';
 
+import { runAiPilotTurn } from '../../../utils/ai-pilot/engine';
 import { getBusinessFeatures } from '../../../utils/config';
 import { recordComplaintFromMessage } from '../../../utils/complaint-risk';
 import { db } from '../../../utils/db';
@@ -64,6 +65,8 @@ export default defineEventHandler(async (event): Promise<SupportMessage> => {
   /// lleva su propio expires_at porque TTL no borra subcolecciones.
   const expiresAt = Timestamp.fromMillis(Date.now() + 24 * 60 * 60 * 1000);
 
+  const isAutoMemberTurn = sender === 'member' && conv.ai_mode === 'auto';
+
   await db().runTransaction(async (tx) => {
     tx.set(msgRef, {
       sender,
@@ -73,13 +76,26 @@ export default defineEventHandler(async (event): Promise<SupportMessage> => {
       read: false,
       expires_at: expiresAt,
     });
-    tx.update(convRef, {
+    const convUpdate: Record<string, unknown> = {
       last_message_at: now,
       last_message_preview: text.slice(0, 100),
-      [unreadField]: FieldValue.increment(1),
       expires_at: expiresAt,
-    });
+    };
+    if (!isAutoMemberTurn) {
+      convUpdate[unreadField] = FieldValue.increment(1);
+    }
+    // Al responder un humano, toma el control y pausa el piloto IA en esta conversación
+    if (sender === 'staff') {
+      convUpdate.ai_mode = 'human';
+      convUpdate.escalated = false;
+      convUpdate.escalation_reason = null;
+    }
+    tx.update(convRef, convUpdate);
   });
+
+  if (isAutoMemberTurn) {
+    event.waitUntil(runAiPilotTurn(id));
+  }
 
   /// Miembro → detección de quejas para Retención IA (solo con el módulo
   /// activo y conversaciones de miembros registrados, no visitantes web).

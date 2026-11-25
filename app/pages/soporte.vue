@@ -9,9 +9,12 @@ import {
   type Unsubscribe,
 } from 'firebase/firestore';
 import {
+  AlertCircle,
+  Bot,
   CheckCircle2,
   Gift,
   Globe,
+  Hand,
   MessageCircle,
   Phone,
   RefreshCw,
@@ -22,6 +25,7 @@ import {
 } from '@lucide/vue';
 
 import type {
+  AiMode,
   Conversation,
   ConversationSource,
   SupportCopilotResponse,
@@ -30,6 +34,8 @@ import type {
 
 const { session } = useAuth();
 const { db } = useFirebase();
+const runtimeConfig = useRuntimeConfig();
+const autopilotProvisioned = computed(() => Boolean(runtimeConfig.public.features?.aiAutopilot));
 
 const conversations = ref<Conversation[]>([]);
 const sourceFilter = ref<'all' | ConversationSource>('all');
@@ -40,6 +46,9 @@ const newMessage = ref('');
 const sending = ref(false);
 const resolving = ref(false);
 const resolveConfirmOpen = ref(false);
+const togglingMode = ref(false);
+const pendingAiMode = ref<AiMode | null>(null);
+const modeConfirmOpen = ref(false);
 
 /// Copiloto IA
 const copilotData = ref<SupportCopilotResponse | null>(null);
@@ -108,6 +117,10 @@ function startListeners(): void {
             visitorPhone: data.visitor_phone ? String(data.visitor_phone) : null,
             branchId: String(data.branch_id ?? ''),
             status: 'open' as const,
+            aiMode: data.ai_mode === 'auto' ? 'auto' : 'human',
+            escalated: data.escalated === true,
+            escalationReason: data.escalation_reason ? String(data.escalation_reason) : null,
+            aiTurnsCount: Number(data.ai_turns_count ?? 0),
             createdAt: (data.created_at as Timestamp)?.toMillis?.() ?? Date.now(),
             lastMessageAt:
               (data.last_message_at as Timestamp)?.toMillis?.() ?? Date.now(),
@@ -174,7 +187,7 @@ function selectConversation(id: string): void {
         return {
           id: d.id,
           conversationId: id,
-          sender: data.sender === 'staff' ? 'staff' : 'member',
+          sender: data.sender === 'staff' ? 'staff' : data.sender === 'ai' ? 'ai' : 'member',
           senderName: String(data.sender_name ?? ''),
           text: String(data.text ?? ''),
           createdAt: (data.created_at as Timestamp)?.toMillis?.() ?? Date.now(),
@@ -215,6 +228,26 @@ async function sendMessage(): Promise<void> {
   } finally {
     sending.value = false;
   }
+}
+
+async function confirmAiModeChange(): Promise<void> {
+  if (!selectedId.value || !pendingAiMode.value || togglingMode.value) return;
+  togglingMode.value = true;
+  try {
+    await $api(`/api/support/${selectedId.value}/mode`, {
+      method: 'POST',
+      body: { aiMode: pendingAiMode.value },
+    });
+    modeConfirmOpen.value = false;
+    pendingAiMode.value = null;
+  } finally {
+    togglingMode.value = false;
+  }
+}
+
+function requestAiModeChange(nextMode: AiMode): void {
+  pendingAiMode.value = nextMode;
+  modeConfirmOpen.value = true;
 }
 
 async function resolveConversation(): Promise<void> {
@@ -359,11 +392,27 @@ onBeforeUnmount(() => {
             <p class="mt-0.5 truncate text-xs text-text-muted">
               {{ conv.lastMessagePreview || 'Nueva conversación' }}
             </p>
-            <div
-              v-if="conv.unreadStaff > 0"
-              class="mt-1 inline-flex items-center gap-1 rounded-full bg-accent px-1.5 py-0.5 text-[9px] font-bold text-base"
-            >
-              {{ conv.unreadStaff }} nuevo{{ conv.unreadStaff > 1 ? 's' : '' }}
+            <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
+              <div
+                v-if="conv.unreadStaff > 0"
+                class="inline-flex items-center gap-1 rounded-full bg-accent px-1.5 py-0.5 text-[9px] font-bold text-base"
+              >
+                {{ conv.unreadStaff }} nuevo{{ conv.unreadStaff > 1 ? 's' : '' }}
+              </div>
+              <span
+                v-if="conv.escalated"
+                class="inline-flex items-center gap-1 rounded-md border border-red-400/35 bg-red-400/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-red-400"
+              >
+                <AlertCircle class="h-2.5 w-2.5" />
+                Requiere humano
+              </span>
+              <span
+                v-else-if="conv.aiMode === 'auto'"
+                class="inline-flex items-center gap-1 rounded-md border border-emerald-400/35 bg-emerald-400/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-400"
+              >
+                <Bot class="h-2.5 w-2.5" />
+                IA activa
+              </span>
             </div>
           </div>
         </button>
@@ -432,15 +481,37 @@ onBeforeUnmount(() => {
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            class="flex cursor-pointer items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-emerald-400 transition hover:bg-emerald-500/20"
-            :disabled="resolving"
-            @click="resolveConfirmOpen = true"
-          >
-            <CheckCircle2 class="h-3.5 w-3.5" />
-            Resolver
-          </button>
+          <div class="flex items-center gap-2">
+            <button
+              v-if="autopilotProvisioned && selected.aiMode === 'auto'"
+              type="button"
+              class="flex cursor-pointer items-center gap-1.5 rounded-lg border border-amber-400/35 bg-amber-400/15 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-amber-400 transition hover:bg-amber-400/25"
+              :disabled="togglingMode"
+              @click="requestAiModeChange('human')"
+            >
+              <Hand class="h-3.5 w-3.5" />
+              Tomar control
+            </button>
+            <button
+              v-else-if="autopilotProvisioned"
+              type="button"
+              class="flex cursor-pointer items-center gap-1.5 rounded-lg border border-accent/35 bg-accent/15 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-accent transition hover:bg-accent/25"
+              :disabled="togglingMode"
+              @click="requestAiModeChange('auto')"
+            >
+              <Bot class="h-3.5 w-3.5" />
+              Devolver a IA
+            </button>
+            <button
+              type="button"
+              class="flex cursor-pointer items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-emerald-400 transition hover:bg-emerald-500/20"
+              :disabled="resolving"
+              @click="resolveConfirmOpen = true"
+            >
+              <CheckCircle2 class="h-3.5 w-3.5" />
+              Resolver
+            </button>
+          </div>
         </div>
 
         <!-- Cinta de Contexto: Visitante Web -->
@@ -508,6 +579,18 @@ onBeforeUnmount(() => {
           </span>
         </div>
 
+        <!-- Aviso de escalación -->
+        <div
+          v-if="selected.escalated"
+          class="flex items-center gap-2 border-b border-red-400/25 bg-red-400/10 px-4 py-2 text-[11px] text-red-300"
+        >
+          <AlertCircle class="h-3.5 w-3.5 shrink-0 text-red-400" />
+          <span>
+            <strong class="text-red-400">Escalado por Piloto IA:</strong>
+            {{ selected.escalationReason || 'Requiere atención de recepción' }}
+          </span>
+        </div>
+
         <!-- Mensajes -->
         <div ref="messagesEl" class="flex-1 overflow-y-auto p-4">
           <div class="space-y-3">
@@ -515,20 +598,29 @@ onBeforeUnmount(() => {
               v-for="msg in messages"
               :key="msg.id"
               class="flex"
-              :class="msg.sender === 'staff' ? 'justify-end' : 'justify-start'"
+              :class="msg.sender === 'member' ? 'justify-start' : 'justify-end'"
             >
               <div
                 class="max-w-[70%] rounded-2xl px-4 py-2"
                 :class="
-                  msg.sender === 'staff'
-                    ? 'border border-stroke bg-base text-text-primary'
-                    : 'bg-accent text-base font-medium'
+                  msg.sender === 'member'
+                    ? 'bg-accent text-base font-medium'
+                    : msg.sender === 'ai'
+                      ? 'border border-emerald-400/30 bg-emerald-500/10 text-text-primary'
+                      : 'border border-stroke bg-base text-text-primary'
                 "
               >
-                <p class="text-sm leading-relaxed">{{ msg.text }}</p>
+                <p
+                  v-if="msg.sender === 'ai'"
+                  class="mb-1 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-emerald-400"
+                >
+                  <Bot class="h-3 w-3" />
+                  {{ msg.senderName || 'Asistente IA' }}
+                </p>
+                <p class="whitespace-pre-wrap text-sm leading-relaxed">{{ msg.text }}</p>
                 <p
                   class="mt-1 text-[9px]"
-                  :class="msg.sender === 'staff' ? 'text-text-dim' : 'text-base/70'"
+                  :class="msg.sender === 'member' ? 'text-base/70' : 'text-text-dim'"
                 >
                   {{ formatTime(msg.createdAt) }}
                 </p>
@@ -611,6 +703,34 @@ onBeforeUnmount(() => {
         </p>
       </div>
     </div>
+
+    <!-- Confirmación cambio de modo IA / Humano -->
+    <UModal
+      v-model:open="modeConfirmOpen"
+      :title="pendingAiMode === 'human' ? 'Tomar control humano' : 'Devolver conversación al Piloto IA'"
+      :description="
+        pendingAiMode === 'human'
+          ? 'El Asistente IA dejará de responder automáticamente en esta conversación y quedará a cargo de recepción.'
+          : 'El Asistente IA volverá a responder los siguientes mensajes del cliente en esta conversación.'
+      "
+    >
+      <template #footer>
+        <div class="flex w-full justify-end gap-2">
+          <UButton
+            label="Cancelar"
+            color="neutral"
+            variant="outline"
+            @click="modeConfirmOpen = false"
+          />
+          <UButton
+            :label="pendingAiMode === 'human' ? 'Tomar control' : 'Activar IA'"
+            color="primary"
+            :loading="togglingMode"
+            @click="confirmAiModeChange"
+          />
+        </div>
+      </template>
+    </UModal>
 
     <!-- Confirmación de resolver - la conversación se borra al cerrar -->
     <UModal

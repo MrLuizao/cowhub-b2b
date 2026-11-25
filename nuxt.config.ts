@@ -40,6 +40,7 @@ export default defineNuxtConfig({
       /// Features bajo demanda provisionadas por el desarrollador para este despliegue
       features: {
         churnRetention: process.env.AI_CHURN_ENABLED === '1' || process.env.AI_CHURN_ENABLED === 'true',
+        aiAutopilot: process.env.AI_AUTOPILOT_ENABLED === '1' || process.env.AI_AUTOPILOT_ENABLED === 'true',
       },
     },
   },

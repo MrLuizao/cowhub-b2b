@@ -544,14 +544,24 @@ const roomsGridClass = computed(() =>
           >
             <div class="min-w-0 flex-1">
               <div class="flex flex-wrap items-center gap-2">
-                <span class="font-mono text-xs font-semibold tracking-wider text-accent">{{ b.folio }}</span>
+                <NuxtLink
+                  :to="`/agenda-web/reservas/${b.id}`"
+                  class="font-mono text-xs font-semibold tracking-wider text-accent hover:underline"
+                >
+                  {{ b.folio }}
+                </NuxtLink>
                 <span
                   class="rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
                   :class="statusBadge[b.status]"
                 >
                   {{ BOOKING_STATUSES.find((s) => s.value === b.status)?.label ?? b.status }}
                 </span>
-                <span class="text-sm font-medium text-white">{{ b.spaceName }}</span>
+                <NuxtLink
+                  :to="`/agenda-web/reservas/${b.id}`"
+                  class="text-sm font-medium text-white transition hover:text-accent hover:underline"
+                >
+                  {{ b.spaceName }}
+                </NuxtLink>
                 <span
                   v-if="b.status === 'completed' && b.checkedInAt"
                   class="text-xs font-medium text-emerald-300"
@@ -563,25 +573,15 @@ const roomsGridClass = computed(() =>
                 {{ fmtDate(b.date) }} · {{ fmtTime(b) }} · {{ b.people }} pers. · {{ b.guests?.name }}
               </p>
             </div>
-            <div class="flex items-center gap-3">
+            <div class="flex items-center gap-2.5">
               <span class="text-sm font-semibold text-white">{{ mxn(b.totalMxn) }}</span>
-              <span
-                v-if="bookingStatusLocked(b)"
-                class="flex items-center gap-1 rounded-xl border border-stroke bg-base px-2.5 py-1.5 text-[11px] font-medium text-text-dim"
-                title="Acceso ya confirmado - solo gerente puede cambiar el estado"
+              <NuxtLink
+                :to="`/agenda-web/reservas/${b.id}`"
+                class="inline-flex cursor-pointer items-center gap-1 rounded-full border border-stroke bg-base px-3 py-1.5 text-[11px] font-bold text-text-secondary transition hover:border-accent hover:text-accent"
               >
-                <Lock class="h-3 w-3" /> Requiere gerente
-              </span>
-              <select
-                v-else
-                :key="`${b.id}-${selectReset}`"
-                :value="b.status"
-                :disabled="savingId === b.id"
-                class="rounded-xl border border-stroke bg-base px-3 py-1.5 text-xs font-medium text-white outline-none transition focus:border-accent disabled:opacity-50"
-                @change="askBookingStatus(b, $event)"
-              >
-                <option v-for="s in bookingStatusOptions(b)" :key="s.value" :value="s.value">{{ s.label }}</option>
-              </select>
+                Gestionar
+                <ArrowRight class="h-3 w-3" />
+              </NuxtLink>
             </div>
           </div>
         </div>
@@ -612,7 +612,12 @@ const roomsGridClass = computed(() =>
             <div class="flex items-start justify-between gap-3">
               <div class="min-w-0">
                 <div class="flex flex-wrap items-center gap-2">
-                  <span class="font-mono text-xs font-semibold tracking-wider text-accent">{{ t.folio }}</span>
+                  <NuxtLink
+                    :to="`/agenda-web/tours/${t.id}`"
+                    class="font-mono text-xs font-semibold tracking-wider text-accent hover:underline"
+                  >
+                    {{ t.folio }}
+                  </NuxtLink>
                   <span
                     class="rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
                     :class="statusBadge[t.status]"
@@ -620,24 +625,25 @@ const roomsGridClass = computed(() =>
                     {{ TOUR_STATUSES.find((s) => s.value === t.status)?.label ?? t.status }}
                   </span>
                 </div>
-                <p class="mt-1.5 truncate text-sm font-medium text-white">
+                <NuxtLink
+                  :to="`/agenda-web/tours/${t.id}`"
+                  class="mt-1.5 block truncate text-sm font-medium text-white transition hover:text-accent hover:underline"
+                >
                   {{ t.name }}<span v-if="t.company" class="font-normal text-text-muted"> · {{ t.company }}</span>
-                </p>
+                </NuxtLink>
                 <p class="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-text-dim">
                   <span class="flex items-center gap-1"><Mail class="h-3 w-3" /> {{ t.email }}</span>
                   <span v-if="t.phone" class="flex items-center gap-1"><Phone class="h-3 w-3" /> {{ t.phone }}</span>
                   <span>{{ fmtCreated(t.createdAt) }}</span>
                 </p>
               </div>
-              <select
-                :key="`${t.id}-${selectReset}`"
-                :value="t.status"
-                :disabled="savingId === t.id"
-                class="shrink-0 rounded-xl border border-stroke bg-base px-3 py-1.5 text-xs font-medium text-white outline-none transition focus:border-accent disabled:opacity-50"
-                @change="askTourStatus(t, $event)"
+              <NuxtLink
+                :to="`/agenda-web/tours/${t.id}`"
+                class="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-full border border-accent/40 bg-accent/10 px-3 py-1.5 text-[11px] font-bold text-accent transition hover:bg-accent/20"
               >
-                <option v-for="s in TOUR_STATUSES" :key="s.value" :value="s.value">{{ s.label }}</option>
-              </select>
+                Atender
+                <ArrowRight class="h-3 w-3" />
+              </NuxtLink>
             </div>
           </div>
         </div>

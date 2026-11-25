@@ -18,6 +18,8 @@ export async function getBusinessFeatures(): Promise<BusinessFeatures> {
     (process.env.AI_CHURN_PLAN as 'basic' | 'premium' | 'enterprise') || 'premium';
   const envThreshold = parseInt(process.env.AI_CHURN_ALERT_THRESHOLD || '65', 10);
   const envAutoPush = process.env.AI_CHURN_AUTO_PUSH === '1';
+  const envAutopilot =
+    process.env.AI_AUTOPILOT_ENABLED === '1' || process.env.AI_AUTOPILOT_ENABLED === 'true';
 
   const baseConfig: BusinessFeatures = {
     ai_churn_prediction: {
@@ -33,6 +35,10 @@ export async function getBusinessFeatures(): Promise<BusinessFeatures> {
         vertex_endpoint_id: process.env.VERTEX_ENDPOINT_ID || '',
       },
     },
+    ai_autopilot: {
+      enabled: envAutopilot,
+      plan: 'premium',
+    },
   };
 
   // 2. Consulta opcional de Firestore para overrides
@@ -42,20 +48,23 @@ export async function getBusinessFeatures(): Promise<BusinessFeatures> {
 
     if (doc.exists) {
       const data = doc.data() as Partial<BusinessFeatures>;
-      if (data.ai_churn_prediction) {
-        return {
-          ai_churn_prediction: {
-            ...baseConfig.ai_churn_prediction,
-            ...data.ai_churn_prediction,
-            // Si la env var lo apaga explícitamente, gana el desarrollador
-            enabled: envEnabled || data.ai_churn_prediction.enabled === true,
-            settings: {
-              ...baseConfig.ai_churn_prediction.settings,
-              ...(data.ai_churn_prediction.settings ?? {}),
-            },
-          },
-        };
-      }
+      return {
+        ai_churn_prediction: data.ai_churn_prediction
+          ? {
+              ...baseConfig.ai_churn_prediction,
+              ...data.ai_churn_prediction,
+              enabled: envEnabled || data.ai_churn_prediction.enabled === true,
+              settings: {
+                ...baseConfig.ai_churn_prediction.settings,
+                ...(data.ai_churn_prediction.settings ?? {}),
+              },
+            }
+          : baseConfig.ai_churn_prediction,
+        ai_autopilot: {
+          enabled: envAutopilot,
+          plan: data.ai_autopilot?.plan ?? 'premium',
+        },
+      };
     }
   } catch (err) {
     console.warn('[Config] No se pudo leer /config/features, usando env vars:', err);

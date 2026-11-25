@@ -287,6 +287,87 @@ ${historyText || '(Conversación recién abierta)'}`;
   };
 }
 
+/// Sugerencias del Copiloto IA para visitantes web (cowhub-book) sin ficha de miembro.
+export async function generateVisitorCopilotSuggestions(input: {
+  visitorName: string;
+  visitorPhone?: string | null;
+  messages: Array<{ sender: 'member' | 'staff'; text: string }>;
+}): Promise<{
+  intent: SupportIntent;
+  intentLabel: string;
+  urgency: 'high' | 'normal';
+  suggestions: string[];
+  aiPowered: boolean;
+}> {
+  const lastVisitorMsg =
+    [...input.messages].reverse().find((m) => m.sender === 'member')?.text || '';
+  const classification = classifySupportIntent(lastVisitorMsg);
+  const firstName = input.visitorName.split(' ')[0] || 'hola';
+
+  const fallbackByIntent: Record<SupportIntent, string[]> = {
+    billing: [
+      `Hola ${firstName}, con gusto te comparto nuestros precios de salas por hora, día completo y membresías mensuales. ¿Qué espacio te interesa?`,
+      `¡Hola ${firstName}! Aceptamos tarjeta, transferencia y emitimos factura fiscal. ¿Para cuántas personas buscas espacio?`,
+      `Con gusto te cotizo hoy mismo, ${firstName}. ¿Prefieres oficina privada, sala de juntas o pase de coworking?`,
+    ],
+    activities: [
+      `¡Hola ${firstName}! Puedes reservar salas de juntas, auditorio o cabinas directo en la web o te ayudamos desde aquí. ¿Para qué fecha y hora lo necesitas?`,
+      `Hola ${firstName}, contamos con salas desde 4 hasta 40 personas en Metepec. ¿Cuántas personas asistirán?`,
+      `Con gusto reviso disponibilidad ahora mismo, ${firstName}. ¿Qué día y horario tienes en mente?`,
+    ],
+    complaint: [
+      `Hola ${firstName}, lamentamos el inconveniente. Con gusto lo revisamos de inmediato desde recepción en Metepec para ayudarte.`,
+      `Gracias por avisarnos, ${firstName}. ¿Nos puedes compartir un poco más de detalle para resolverlo cuanto antes?`,
+      `Hola ${firstName}, ya canalicé tu comentario con nuestro equipo para darte una solución hoy mismo.`,
+    ],
+    access: [
+      `¡Hola ${firstName}! Estamos en Paseo San Isidro 111, Metepec. Nuestro horario es Lun-Vie 7:00 a 21:00 y Sáb 9:00 a 15:00.`,
+      `Hola ${firstName}, con gusto te agendamos una visita guiada de 30 minutos sin compromiso para que conozcas las instalaciones.`,
+      `¡Claro, ${firstName}! Al llegar a recepción te damos acceso inmediato con tu nombre o folio de reserva.`,
+    ],
+    general: [
+      `¡Hola ${firstName}! Bienvenido a COW-HUB Metepec. ¿Buscas reservar una sala, oficina privada o agendar un tour para conocernos?`,
+      `Hola ${firstName}, con gusto te ayudamos desde recepción. Cuéntame qué necesitas y te doy información al momento.`,
+      `¡Hola ${firstName}! Si gustas podemos agendar un tour de 30 minutos sin compromiso en Paseo San Isidro 111, Metepec.`,
+    ],
+  };
+
+  const historyText = input.messages
+    .slice(-6)
+    .map((m) => `${m.sender === 'member' ? 'Visitante' : 'Recepción'}: ${m.text}`)
+    .join('\n');
+
+  const systemPrompt =
+    'Eres el copiloto de atención comercial de COW-HUB Metepec (Business Center con oficinas privadas, salas de juntas, auditorio, coworking flexible y tours en Paseo San Isidro 111, Metepec; horario Lun-Vie 7:00-21:00, Sáb 9:00-15:00). Genera exactamente 3 respuestas breves, amables y claras para que recepción conteste con 1 click a un visitante web interesado. Responde únicamente en JSON con el formato {"suggestions": [string, string, string]}. Máximo 190 caracteres por respuesta y sin usar guion largo.';
+
+  const userPrompt = `Visitante web: ${input.visitorName}${input.visitorPhone ? ` (Tel: ${input.visitorPhone})` : ''}
+
+Historial reciente del chat:
+${historyText || '(Consulta recién iniciada)'}`;
+
+  const raw = await generateWithGemini(userPrompt, systemPrompt, true);
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw) as { suggestions?: string[] };
+      if (Array.isArray(parsed.suggestions) && parsed.suggestions.length >= 2) {
+        return {
+          ...classification,
+          suggestions: parsed.suggestions.slice(0, 3).map((s) => String(s).trim()),
+          aiPowered: true,
+        };
+      }
+    } catch {
+      // Cae a fallback
+    }
+  }
+
+  return {
+    ...classification,
+    suggestions: fallbackByIntent[classification.intent],
+    aiPowered: false,
+  };
+}
+
 export async function generateMemberHostTip(input: {
   memberName: string;
   branchName: string;

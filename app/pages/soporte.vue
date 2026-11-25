@@ -11,15 +11,19 @@ import {
 import {
   CheckCircle2,
   Gift,
+  Globe,
   MessageCircle,
+  Phone,
   RefreshCw,
   Send,
+  Smartphone,
   Sparkles,
   User,
 } from '@lucide/vue';
 
 import type {
   Conversation,
+  ConversationSource,
   SupportCopilotResponse,
   SupportMessage,
 } from '#shared/types';
@@ -28,8 +32,10 @@ const { session } = useAuth();
 const { db } = useFirebase();
 
 const conversations = ref<Conversation[]>([]);
+const sourceFilter = ref<'all' | ConversationSource>('all');
 const selectedId = ref<string | null>(null);
 const messages = ref<SupportMessage[]>([]);
+const messagesEl = ref<HTMLElement | null>(null);
 const newMessage = ref('');
 const sending = ref(false);
 const resolving = ref(false);
@@ -42,9 +48,29 @@ const loadingCopilot = ref(false);
 let unsubConversations: Unsubscribe | null = null;
 let unsubMessages: Unsubscribe | null = null;
 
+const filteredConversations = computed(() => {
+  if (sourceFilter.value === 'all') return conversations.value;
+  return conversations.value.filter((c) => (c.source ?? 'app') === sourceFilter.value);
+});
+
+const webCount = computed(
+  () => conversations.value.filter((c) => c.source === 'web').length,
+);
+const appCount = computed(
+  () => conversations.value.filter((c) => (c.source ?? 'app') === 'app').length,
+);
+
 const selected = computed(() =>
   conversations.value.find((c) => c.id === selectedId.value) ?? null,
 );
+
+function scrollToBottom(): void {
+  nextTick(() => {
+    if (messagesEl.value) {
+      messagesEl.value.scrollTop = messagesEl.value.scrollHeight;
+    }
+  });
+}
 
 function startListeners(): void {
   if (!db) {
@@ -73,10 +99,13 @@ function startListeners(): void {
         )
         .map((d) => {
           const data = d.data();
+          const source: ConversationSource = data.source === 'web' ? 'web' : 'app';
           return {
             id: d.id,
-            memberId: String(data.member_id ?? ''),
-            memberName: String(data.member_name ?? ''),
+            source,
+            memberId: data.member_id ? String(data.member_id) : null,
+            memberName: String(data.member_name ?? (source === 'web' ? 'Visitante web' : 'Miembro')),
+            visitorPhone: data.visitor_phone ? String(data.visitor_phone) : null,
             branchId: String(data.branch_id ?? ''),
             status: 'open' as const,
             createdAt: (data.created_at as Timestamp)?.toMillis?.() ?? Date.now(),
@@ -158,6 +187,7 @@ function selectConversation(id: string): void {
         void loadCopilot(id);
       }
       prevCount = messages.value.length;
+      scrollToBottom();
 
       // Marcar como leídos en el server
       void $api(`/api/support/${id}/messages`);
@@ -237,7 +267,7 @@ onBeforeUnmount(() => {
       <div class="flex items-center gap-2 border-b border-stroke p-4">
         <MessageCircle class="h-4 w-4 text-accent" />
         <h2 class="text-sm font-black tracking-tight text-text-primary">
-          Soporte
+          Chat en vivo
         </h2>
         <span
           v-if="conversations.length"
@@ -247,9 +277,51 @@ onBeforeUnmount(() => {
         </span>
       </div>
 
+      <!-- Filtro de canal -->
+      <div class="flex items-center gap-1.5 border-b border-stroke px-3 py-2">
+        <button
+          type="button"
+          class="cursor-pointer rounded-full border px-2.5 py-1 text-[10px] font-bold transition"
+          :class="
+            sourceFilter === 'all'
+              ? 'border-accent/50 bg-accent/15 text-accent'
+              : 'border-stroke bg-base text-text-muted hover:text-text-primary'
+          "
+          @click="sourceFilter = 'all'"
+        >
+          Todos ({{ conversations.length }})
+        </button>
+        <button
+          type="button"
+          class="inline-flex cursor-pointer items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-bold transition"
+          :class="
+            sourceFilter === 'web'
+              ? 'border-amber-400/50 bg-amber-400/15 text-amber-400'
+              : 'border-stroke bg-base text-text-muted hover:text-text-primary'
+          "
+          @click="sourceFilter = 'web'"
+        >
+          <Globe class="h-3 w-3" />
+          Web ({{ webCount }})
+        </button>
+        <button
+          type="button"
+          class="inline-flex cursor-pointer items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-bold transition"
+          :class="
+            sourceFilter === 'app'
+              ? 'border-accent/50 bg-accent/15 text-accent'
+              : 'border-stroke bg-base text-text-muted hover:text-text-primary'
+          "
+          @click="sourceFilter = 'app'"
+        >
+          <Smartphone class="h-3 w-3" />
+          App ({{ appCount }})
+        </button>
+      </div>
+
       <div class="flex-1 overflow-y-auto">
         <button
-          v-for="conv in conversations"
+          v-for="conv in filteredConversations"
           :key="conv.id"
           type="button"
           class="flex w-full cursor-pointer items-start gap-3 border-b border-stroke p-4 text-left transition hover:bg-base"
@@ -257,15 +329,29 @@ onBeforeUnmount(() => {
           @click="selectConversation(conv.id)"
         >
           <div
-            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent/20"
+            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
+            :class="conv.source === 'web' ? 'bg-amber-400/15 text-amber-400' : 'bg-accent/20 text-accent'"
           >
-            <User class="h-5 w-5 text-accent" />
+            <Globe v-if="conv.source === 'web'" class="h-5 w-5" />
+            <User v-else class="h-5 w-5" />
           </div>
           <div class="min-w-0 flex-1">
             <div class="flex items-center justify-between gap-2">
-              <p class="truncate text-sm font-bold text-text-primary">
-                {{ conv.memberName }}
-              </p>
+              <div class="flex min-w-0 items-center gap-1.5">
+                <p class="truncate text-sm font-bold text-text-primary">
+                  {{ conv.memberName }}
+                </p>
+                <span
+                  class="inline-flex shrink-0 items-center rounded-md border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider"
+                  :class="
+                    conv.source === 'web'
+                      ? 'border-amber-400/35 bg-amber-400/15 text-amber-400'
+                      : 'border-accent/35 bg-accent/15 text-accent'
+                  "
+                >
+                  {{ conv.source === 'web' ? 'Web' : 'App' }}
+                </span>
+              </div>
               <span class="shrink-0 text-[10px] text-text-dim">
                 {{ formatDate(conv.lastMessageAt) }}
               </span>
@@ -283,7 +369,7 @@ onBeforeUnmount(() => {
         </button>
 
         <p
-          v-if="conversations.length === 0"
+          v-if="filteredConversations.length === 0"
           class="p-8 text-center text-xs text-text-dim"
         >
           Sin conversaciones activas
@@ -298,21 +384,40 @@ onBeforeUnmount(() => {
         <div class="flex items-center justify-between border-b border-stroke p-4">
           <div class="flex items-center gap-3">
             <div
-              class="flex h-10 w-10 items-center justify-center rounded-full bg-accent/20"
+              class="flex h-10 w-10 items-center justify-center rounded-full"
+              :class="selected.source === 'web' ? 'bg-amber-400/15 text-amber-400' : 'bg-accent/20 text-accent'"
             >
-              <User class="h-5 w-5 text-accent" />
+              <Globe v-if="selected.source === 'web'" class="h-5 w-5" />
+              <User v-else class="h-5 w-5" />
             </div>
             <div>
-              <div class="flex items-center gap-2">
+              <div class="flex flex-wrap items-center gap-2">
                 <NuxtLink
+                  v-if="selected.source !== 'web' && selected.memberId"
                   :to="`/miembros/${selected.memberId}`"
                   class="text-sm font-bold text-text-primary transition hover:text-accent"
                 >
                   {{ selected.memberName }}
                 </NuxtLink>
                 <span
+                  v-else
+                  class="text-sm font-bold text-text-primary"
+                >
+                  {{ selected.memberName }}
+                </span>
+                <span
+                  class="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+                  :class="
+                    selected.source === 'web'
+                      ? 'border-amber-400/35 bg-amber-400/15 text-amber-400'
+                      : 'border-accent/35 bg-accent/15 text-accent'
+                  "
+                >
+                  {{ selected.source === 'web' ? 'Web · Book' : 'Miembro · App' }}
+                </span>
+                <span
                   v-if="copilotData"
-                  class="inline-flex items-center rounded-md border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider"
+                  class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider"
                   :class="
                     copilotData.urgency === 'high'
                       ? 'bg-red-500/15 text-red-400 border-red-500/30'
@@ -338,9 +443,31 @@ onBeforeUnmount(() => {
           </button>
         </div>
 
-        <!-- Cinta de Contexto del Miembro (Copiloto IA) -->
+        <!-- Cinta de Contexto: Visitante Web -->
         <div
-          v-if="copilotData"
+          v-if="selected.source === 'web'"
+          class="flex flex-wrap items-center gap-3 border-b border-stroke bg-base/60 px-4 py-2 text-[11px]"
+        >
+          <span class="inline-flex items-center gap-1.5 text-text-muted">
+            <Globe class="h-3.5 w-3.5 text-amber-400" />
+            Visitante sin cuenta · <strong class="text-text-primary">COW-HUB Book</strong>
+          </span>
+          <a
+            v-if="selected.visitorPhone"
+            :href="`tel:${selected.visitorPhone}`"
+            class="inline-flex items-center gap-1.5 font-semibold text-accent hover:underline"
+          >
+            <Phone class="h-3 w-3" />
+            {{ selected.visitorPhone }}
+          </a>
+          <span v-else class="text-text-dim">
+            Sin teléfono proporcionado
+          </span>
+        </div>
+
+        <!-- Cinta de Contexto del Miembro (App · Copiloto IA) -->
+        <div
+          v-else-if="copilotData?.memberContext"
           class="flex flex-wrap items-center gap-3 border-b border-stroke bg-base/60 px-4 py-2 text-[11px]"
         >
           <span class="text-text-muted">
@@ -382,7 +509,7 @@ onBeforeUnmount(() => {
         </div>
 
         <!-- Mensajes -->
-        <div class="flex-1 overflow-y-auto p-4">
+        <div ref="messagesEl" class="flex-1 overflow-y-auto p-4">
           <div class="space-y-3">
             <div
               v-for="msg in messages"
@@ -422,7 +549,7 @@ onBeforeUnmount(() => {
           <div class="flex items-center justify-between">
             <span class="inline-flex items-center gap-1.5 text-[11px] font-bold text-accent">
               <Sparkles class="h-3.5 w-3.5" />
-              Copiloto IA · Respuestas con contexto del miembro (1-click)
+              {{ selected.source === 'web' ? 'Copiloto IA · Respuestas comerciales (1-click)' : 'Copiloto IA · Respuestas con contexto del miembro (1-click)' }}
             </span>
             <button
               type="button"

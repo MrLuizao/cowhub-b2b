@@ -1,7 +1,10 @@
 import type { Timestamp } from 'firebase-admin/firestore';
 import type { ChurnRiskLevel, SupportCopilotResponse } from '#shared/types';
 import { db } from '../../../utils/db';
-import { generateSupportCopilotSuggestions } from '../../../utils/gemini';
+import {
+  generateSupportCopilotSuggestions,
+  generateVisitorCopilotSuggestions,
+} from '../../../utils/gemini';
 import { requireBranchScope, requireStaff } from '../../../utils/staff-auth';
 
 /**
@@ -21,7 +24,41 @@ export default defineEventHandler(async (event): Promise<SupportCopilotResponse>
   const conv = convSnap.data()!;
   requireBranchScope(staff, conv.branch_id as string);
 
-  const memberId = String(conv.member_id ?? '');
+  const memberId = conv.member_id ? String(conv.member_id) : '';
+  const isVisitor = conv.source === 'web' || !memberId;
+
+  if (isVisitor) {
+    const msgsSnap = await convSnap.ref
+      .collection('messages')
+      .orderBy('created_at', 'asc')
+      .limitToLast(8)
+      .get();
+
+    const messages = msgsSnap.docs.map((d) => {
+      const m = d.data();
+      return {
+        sender: (m.sender === 'staff' ? 'staff' : 'member') as 'member' | 'staff',
+        text: String(m.text ?? ''),
+      };
+    });
+
+    const copilot = await generateVisitorCopilotSuggestions({
+      visitorName: String(conv.member_name ?? 'Visitante'),
+      visitorPhone: conv.visitor_phone ? String(conv.visitor_phone) : null,
+      messages,
+    });
+
+    return {
+      intent: copilot.intent,
+      intentLabel: copilot.intentLabel,
+      urgency: copilot.urgency,
+      aiPowered: copilot.aiPowered,
+      isVisitor: true,
+      memberContext: null,
+      suggestions: copilot.suggestions,
+    };
+  }
+
   const [memberSnap, msgsSnap] = await Promise.all([
     db().collection('users').doc(memberId).get(),
     convSnap.ref.collection('messages').orderBy('created_at', 'asc').limitToLast(8).get(),

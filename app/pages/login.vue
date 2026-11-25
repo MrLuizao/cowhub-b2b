@@ -95,10 +95,10 @@ async function submit(): Promise<void> {
 <template>
   <div class="flex min-h-screen bg-base">
     <!-- Formulario -->
-    <div class="flex w-full flex-col justify-center px-6 py-10 sm:px-10 lg:w-[440px] lg:shrink-0 xl:w-[480px]">
-      <div class="mx-auto w-full max-w-sm">
+    <div class="flex min-h-screen w-full flex-col px-6 py-8 sm:px-10 lg:w-[440px] lg:shrink-0 xl:w-[480px]">
+      <div class="mx-auto my-auto w-full max-w-sm py-6">
         <div class="mb-2">
-          <CowhubLogo size="lg" tagline="COWORKING HUB · CONSOLA ADMINISTRATIVA" />
+          <CowhubLogo size="lg" tagline="CONSOLA ADMINISTRATIVA" />
         </div>
 
         <h2 class="mt-10 text-3xl font-black tracking-tight text-text-primary">
@@ -165,12 +165,20 @@ async function submit(): Promise<void> {
           </button>
         </form>
 
-        <p class="mt-10 text-[10px] text-text-dim">
+        <p class="mt-6 text-center text-[11px] text-text-dim">
           <NuxtLink to="/legal/aviso-privacidad"
             class="underline underline-offset-2 transition hover:text-text-primary">
             Aviso de privacidad
           </NuxtLink>
         </p>
+      </div>
+
+      <div class="mx-auto mt-6 flex w-full max-w-sm justify-center">
+        <a href="https://foundry-landing-pi.vercel.app/" target="_blank" rel="noopener noreferrer" class="shrink-0"
+          style="margin-left: 2em;">
+          <img src="/brand/fundere-original-dark.png" alt="FUNDERE Software Studio"
+            class="h-12 w-auto cursor-pointer object-contain mix-blend-screen" />
+        </a>
       </div>
     </div>
 
@@ -196,22 +204,16 @@ async function submit(): Promise<void> {
         <!-- Escena: bars (barras apiladas estilo FlowDesk) -->
         <div v-else-if="s.scene === 'bars'" class="flowdesk-canvas absolute inset-0">
           <div class="absolute inset-x-0 bottom-0 flex items-end gap-3 px-14 pb-10">
-            <div v-for="(h, j) in [35, 60, 42, 78, 55, 92, 66, 48, 84, 38, 70, 58]" :key="j" class="flex flex-1 flex-col gap-1.5">
-              <div
-                class="w-full rounded-md transition-all"
+            <div v-for="(h, j) in [35, 60, 42, 78, 55, 92, 66, 48, 84, 38, 70, 58]" :key="j"
+              class="flex flex-1 flex-col gap-1.5">
+              <div class="w-full rounded-md transition-all"
                 :class="j === 5 ? 'bg-pastel-yellow' : 'bg-pastel-yellow/35'"
-                :style="{ height: `${Math.round(h * 0.65)}px` }"
-              />
-              <div
-                class="w-full rounded-md transition-all"
-                :class="j === 5 ? 'bg-pastel-pink' : 'bg-pastel-pink/35'"
-                :style="{ height: `${Math.round(h * 0.9)}px` }"
-              />
-              <div
-                class="w-full rounded-md transition-all"
+                :style="{ height: `${Math.round(h * 0.65)}px` }" />
+              <div class="w-full rounded-md transition-all" :class="j === 5 ? 'bg-pastel-pink' : 'bg-pastel-pink/35'"
+                :style="{ height: `${Math.round(h * 0.9)}px` }" />
+              <div class="w-full rounded-md transition-all"
                 :class="j === 5 ? 'bg-pastel-lavender' : 'bg-pastel-lavender/35'"
-                :style="{ height: `${Math.round(h * 1.45)}px` }"
-              />
+                :style="{ height: `${Math.round(h * 1.45)}px` }" />
             </div>
           </div>
           <div class="absolute inset-0 bg-gradient-to-t from-transparent via-transparent to-base/75" />

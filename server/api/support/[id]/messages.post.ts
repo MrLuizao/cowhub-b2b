@@ -82,20 +82,18 @@ export default defineEventHandler(async (event): Promise<SupportMessage> => {
   });
 
   /// Miembro → detección de quejas para Retención IA (solo con el módulo
-  /// activo). Corre en segundo plano (`waitUntil`) para no retrasar la
-  /// respuesta del chat; Gemini/keywords y la escritura son best-effort.
-  if (sender === 'member') {
-    const memberId = conv.member_id as string;
+  /// activo y conversaciones de miembros registrados, no visitantes web).
+  if (sender === 'member' && conv.member_id) {
+    const memberId = String(conv.member_id);
     const task = getBusinessFeatures()
       .then((f) => (f.ai_churn_prediction?.enabled ? recordComplaintFromMessage(memberId, text) : undefined))
       .catch(() => undefined);
     event.waitUntil(task);
   }
 
-  /// Respuesta de staff → push al miembro por topic `member_{id}` (la app
-  /// se suscribe en syncTopics). Best-effort: el mensaje ya quedó
-  /// guardado - si FCM falla solo se pierde la notificación.
-  if (sender === 'staff') {
+  /// Respuesta de staff → push al miembro por topic `member_{id}` (solo app;
+  /// los visitantes web reciben las respuestas directo en el widget).
+  if (sender === 'staff' && conv.member_id) {
     try {
       await useAdmin().messaging.send({
         topic: `member_${String(conv.member_id)}`.replace(

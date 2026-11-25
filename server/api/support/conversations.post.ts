@@ -24,6 +24,7 @@ export default defineEventHandler(async (event): Promise<Conversation> => {
     const d = doc.data();
     return {
       id: doc.id,
+      source: 'app',
       memberId: member.id,
       memberName: member.name,
       branchId: member.branchId,
@@ -37,10 +38,11 @@ export default defineEventHandler(async (event): Promise<Conversation> => {
   }
 
   // Crear nueva conversación - expires_at alimenta la TTL policy de
-  // Firestore (72h sin actividad → se borra sola, mensajes incluidos).
+  // Firestore (24h sin actividad → se borra sola, mensajes incluidos).
   const ref = db().collection('conversations').doc();
   const now = FieldValue.serverTimestamp();
   await ref.set({
+    source: 'app',
     member_id: member.id,
     member_name: member.name,
     branch_id: member.branchId,
@@ -55,6 +57,7 @@ export default defineEventHandler(async (event): Promise<Conversation> => {
 
   return {
     id: ref.id,
+    source: 'app',
     memberId: member.id,
     memberName: member.name,
     branchId: member.branchId,

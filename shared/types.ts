@@ -556,17 +556,20 @@ export interface AdsReportResponse {
 // ─────────────────────────────────────────────────────────────────────
 
 export type ConversationStatus = 'open' | 'resolved';
+export type ConversationSource = 'app' | 'web';
 
 export interface Conversation {
   id: string;
-  memberId: string;
+  source?: ConversationSource;
+  memberId: string | null;
   memberName: string;
+  visitorPhone?: string | null;
   branchId: string;
   status: ConversationStatus;
   createdAt: number;
   lastMessageAt: number;
   lastMessagePreview: string;
-  /// Mensajes sin leer por el miembro
+  /// Mensajes sin leer por el miembro o visitante
   unreadMember: number;
   /// Mensajes sin leer por staff
   unreadStaff: number;
@@ -750,6 +753,7 @@ export interface SupportCopilotResponse {
   intentLabel: string;
   urgency: 'high' | 'normal';
   aiPowered: boolean;
+  isVisitor?: boolean;
   memberContext: {
     id: string;
     name: string;
@@ -762,7 +766,7 @@ export interface SupportCopilotResponse {
     churnRiskLevel: ChurnRiskLevel;
     churnRiskPct: number;
     daysSinceLastVisit: number;
-  };
+  } | null;
   suggestions: string[];
 }
 

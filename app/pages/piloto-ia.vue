@@ -2,6 +2,7 @@
 import {
   AlertCircle,
   Bot,
+  Building2,
   CalendarCheck,
   Clock,
   Plus,
@@ -35,6 +36,7 @@ const form = reactive<AiPilotConfig>({
   tools: {
     checkAvailability: true,
     createTour: true,
+    createBooking: true,
   },
   maxAutoTurns: 12,
 });
@@ -281,29 +283,35 @@ onMounted(() => {
               <label class="block text-[10px] font-bold uppercase tracking-widest text-text-dim">
                 Tono de respuesta
               </label>
-              <select
+              <USelect
                 v-model="form.tone"
                 :disabled="!isAdmin"
-                class="mt-1.5 w-full cursor-pointer rounded-xl border border-stroke bg-base px-3.5 py-2.5 text-sm text-text-primary outline-none transition focus:border-accent disabled:opacity-60"
-              >
-                <option value="ejecutivo">Ejecutivo (Business Center)</option>
-                <option value="cercano">Cercano y amigable</option>
-                <option value="directo">Directo y breve</option>
-              </select>
+                :items="[
+                  { label: 'Ejecutivo (Business Center)', value: 'ejecutivo' },
+                  { label: 'Cercano y amigable', value: 'cercano' },
+                  { label: 'Directo y breve', value: 'directo' },
+                ]"
+                size="lg"
+                class="mt-1.5 w-full"
+                :ui="{ base: 'h-10 rounded-xl border border-stroke bg-base px-3.5 text-sm text-text-primary ring-0 shadow-none' }"
+              />
             </div>
 
             <div>
               <label class="block text-[10px] font-bold uppercase tracking-widest text-text-dim">
                 Horario de atención automática
               </label>
-              <select
+              <USelect
                 v-model="form.scheduleMode"
                 :disabled="!isAdmin"
-                class="mt-1.5 w-full cursor-pointer rounded-xl border border-stroke bg-base px-3.5 py-2.5 text-sm text-text-primary outline-none transition focus:border-accent disabled:opacity-60"
-              >
-                <option value="always">24/7 (siempre primer nivel)</option>
-                <option value="after_hours">Solo fuera de horario de recepción</option>
-              </select>
+                :items="[
+                  { label: '24/7 (siempre primer nivel)', value: 'always' },
+                  { label: 'Solo fuera de horario de recepción', value: 'after_hours' },
+                ]"
+                size="lg"
+                class="mt-1.5 w-full"
+                :ui="{ base: 'h-10 rounded-xl border border-stroke bg-base px-3.5 text-sm text-text-primary ring-0 shadow-none' }"
+              />
             </div>
 
             <div>
@@ -328,7 +336,7 @@ onMounted(() => {
             Herramientas operativas (datos reales)
           </h3>
 
-          <div class="grid gap-3 sm:grid-cols-2">
+          <div class="grid gap-3 sm:grid-cols-3">
             <label
               class="flex cursor-pointer items-start gap-3 rounded-xl border border-stroke bg-base p-4 transition hover:border-accent/40"
             >
@@ -365,6 +373,26 @@ onMounted(() => {
                 </p>
                 <p class="mt-0.5 text-[11px] text-text-dim">
                   Registra folios TOUR-XXXXXX directo en Agenda Web y avisa por correo.
+                </p>
+              </div>
+            </label>
+
+            <label
+              class="flex cursor-pointer items-start gap-3 rounded-xl border border-stroke bg-base p-4 transition hover:border-accent/40"
+            >
+              <input
+                v-model="form.tools.createBooking"
+                type="checkbox"
+                :disabled="!isAdmin"
+                class="mt-0.5 h-4 w-4 cursor-pointer accent-[var(--color-accent)]"
+              />
+              <div>
+                <p class="flex items-center gap-1.5 text-xs font-bold text-text-primary">
+                  <Building2 class="h-3.5 w-3.5 text-accent" />
+                  Reservar espacios en chat
+                </p>
+                <p class="mt-0.5 text-[11px] text-text-dim">
+                  Crea reservas CH-XXXXXX en Agenda Web validando traslapes y horario.
                 </p>
               </div>
             </label>

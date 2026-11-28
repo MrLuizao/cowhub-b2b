@@ -22,10 +22,12 @@ const form = ref({
   pricePerHour: 300,
   pricePerDay: 2000 as number | null,
   image: '',
+  gallery: [] as string[],
   amenitiesStr: 'Pantalla 4K, Videoconferencia, Café de barra, WiFi premium',
   branchIds: session.value?.branchId ? [session.value.branchId] : ([] as string[]),
   featured: false,
   active: true,
+  sort: 10,
 });
 
 const categoryOptions = [
@@ -90,10 +92,12 @@ async function submit(): Promise<void> {
         pricePerHour: Number(f.pricePerHour),
         pricePerDay: f.pricePerDay ? Number(f.pricePerDay) : null,
         image: f.image.trim(),
+        gallery: f.gallery,
         amenities,
         branchIds: f.branchIds,
         featured: f.featured,
         active: f.active,
+        sort: Number(f.sort) || 10,
       },
     });
     confirmModalOpen.value = false;
@@ -239,12 +243,18 @@ onMounted(async () => {
         Fotografía principal de la sala que se muestra en el catálogo y portal
         de reservas.
       </p>
-      <div class="mt-4">
+      <div class="mt-4 space-y-4">
         <ImagePicker
           v-model="form.image"
           label="Subir imagen de la sala (opcional)"
           @error="formError = $event"
         />
+        <div>
+          <span class="block text-[10px] font-bold uppercase tracking-widest text-text-dim">
+            Galería de fotos (opcional)
+          </span>
+          <GalleryEditor v-model="form.gallery" class="mt-1.5" />
+        </div>
       </div>
     </section>
 
@@ -293,6 +303,19 @@ onMounted(async () => {
             type="number"
             min="0"
             placeholder="Opcional"
+            class="mt-1 w-full rounded-xl border border-stroke bg-base px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
+          />
+        </label>
+        <label class="block">
+          <span
+            class="text-[10px] font-bold uppercase tracking-widest text-text-dim"
+          >
+            Orden en catálogo
+          </span>
+          <input
+            v-model.number="form.sort"
+            type="number"
+            min="1"
             class="mt-1 w-full rounded-xl border border-stroke bg-base px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
           />
         </label>

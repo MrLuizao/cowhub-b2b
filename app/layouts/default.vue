@@ -62,14 +62,13 @@ async function loadAdminBranches(): Promise<void> {
   }
 }
 
-function onAdminBranchChange(event: Event): void {
-  const id = (event.target as HTMLSelectElement).value;
-  if (!id) {
+function onAdminBranchChange(value: string): void {
+  if (!value || value === 'ALL') {
     setActiveBranch(null, null);
     return;
   }
-  const found = adminBranches.value.find((b) => b.id === id);
-  setActiveBranch(id, found?.name ?? id);
+  const found = adminBranches.value.find((b) => b.id === value);
+  setActiveBranch(value, found?.name ?? value);
 }
 
 type NavItem = {
@@ -315,18 +314,23 @@ watch(isAdmin, (admin) => {
         class="sticky top-0 z-20 flex h-16 items-center gap-4 border-b border-stroke/80 bg-base/85 px-6 backdrop-blur-md lg:px-8">
         <h1 class="text-lg font-medium tracking-tight text-white">{{ pageTitle }}</h1>
         <div class="ml-auto flex items-center gap-3">
-          <div v-if="isAdmin"
-            class="flex items-center gap-2 rounded-full border border-stroke bg-surface px-3 py-1.5 transition hover:border-white/15">
-            <MapPin class="h-3.5 w-3.5 shrink-0 text-accent" />
-            <select aria-label="Seleccionar sede activa" :value="session?.branchId ?? ''"
-              class="cursor-pointer bg-transparent pr-1 text-xs font-medium text-text-primary outline-none"
-              @change="onAdminBranchChange">
-              <option value="" class="bg-surface text-text-primary">Todas las sedes</option>
-              <option v-for="b in adminBranches" :key="b.id" :value="b.id" class="bg-surface text-text-primary">
-                {{ b.name }}
-              </option>
-            </select>
-          </div>
+          <USelect
+            v-if="isAdmin"
+            aria-label="Seleccionar sede activa"
+            icon="i-lucide-map-pin"
+            :model-value="session?.branchId ?? 'ALL'"
+            :items="[
+              { label: 'Todas las sedes', value: 'ALL' },
+              ...adminBranches.map((b) => ({ label: b.name, value: b.id })),
+            ]"
+            size="sm"
+            :ui="{
+              base: 'rounded-full border border-stroke bg-surface px-3 py-1.5 text-xs font-medium text-text-primary ring-0 shadow-none transition hover:border-white/15',
+              leadingIcon: 'text-accent',
+              trailingIcon: 'text-text-dim',
+            }"
+            @update:model-value="(v) => onAdminBranchChange(String(v ?? 'ALL'))"
+          />
           <div class="flex items-center rounded-full border border-stroke bg-surface p-0.5" role="group"
             aria-label="Selector de tema">
             <button type="button"

@@ -654,12 +654,11 @@ const bookingStepIndex = computed(() => {
                 <label class="block text-[10px] font-bold uppercase tracking-widest text-text-dim">
                   Fecha de visita *
                 </label>
-                <input
+                <DatePickerInput
                   v-model="tourForm.date"
-                  type="date"
                   :min="todayKey"
-                  class="mt-1.5 w-full cursor-pointer rounded-xl border border-stroke bg-base px-3.5 py-2.5 text-xs font-semibold text-text-primary outline-none transition focus:border-accent"
-                  @input="tourFormDirty = true"
+                  class="mt-1.5"
+                  @update:model-value="tourFormDirty = true"
                 />
               </div>
 
@@ -667,15 +666,14 @@ const bookingStepIndex = computed(() => {
                 <label class="block text-[10px] font-bold uppercase tracking-widest text-text-dim">
                   Hora confirmada *
                 </label>
-                <select
+                <USelect
                   v-model="tourForm.time"
-                  class="mt-1.5 w-full cursor-pointer rounded-xl border border-stroke bg-base px-3.5 py-2.5 text-xs font-semibold text-text-primary outline-none transition focus:border-accent"
-                  @change="tourFormDirty = true"
-                >
-                  <option v-for="slot in TOUR_TIME_SLOTS" :key="slot" :value="slot">
-                    {{ slot }} hrs
-                  </option>
-                </select>
+                  :items="TOUR_TIME_SLOTS.map((slot) => ({ label: `${slot} hrs`, value: slot }))"
+                  size="md"
+                  class="mt-1.5 w-full"
+                  :ui="{ base: 'h-10 rounded-xl border border-stroke bg-base px-3.5 text-xs font-semibold text-text-primary ring-0 shadow-none' }"
+                  @update:model-value="tourFormDirty = true"
+                />
               </div>
 
               <div>
@@ -746,13 +744,12 @@ const bookingStepIndex = computed(() => {
                 <label class="block text-[10px] font-bold uppercase tracking-widest text-text-dim">
                   Fecha de reserva *
                 </label>
-                <input
+                <DatePickerInput
                   v-model="bookingForm.date"
-                  type="date"
                   :min="todayKey"
                   :disabled="bookingLocked"
-                  class="mt-1.5 w-full cursor-pointer rounded-xl border border-stroke bg-base px-3.5 py-2.5 text-xs font-semibold text-text-primary outline-none transition focus:border-accent disabled:opacity-60"
-                  @input="bookingFormDirty = true"
+                  class="mt-1.5"
+                  @update:model-value="bookingFormDirty = true"
                 />
               </div>
 
@@ -760,15 +757,18 @@ const bookingStepIndex = computed(() => {
                 <label class="block text-[10px] font-bold uppercase tracking-widest text-text-dim">
                   Modalidad
                 </label>
-                <select
+                <USelect
                   v-model="bookingForm.mode"
                   :disabled="bookingLocked"
-                  class="mt-1.5 w-full cursor-pointer rounded-xl border border-stroke bg-base px-3.5 py-2.5 text-xs font-semibold text-text-primary outline-none transition focus:border-accent disabled:opacity-60"
-                  @change="bookingFormDirty = true"
-                >
-                  <option value="hour">Por hora</option>
-                  <option value="day">Día completo</option>
-                </select>
+                  :items="[
+                    { label: 'Por hora', value: 'hour' },
+                    { label: 'Día completo', value: 'day' },
+                  ]"
+                  size="md"
+                  class="mt-1.5 w-full"
+                  :ui="{ base: 'h-10 rounded-xl border border-stroke bg-base px-3.5 text-xs font-semibold text-text-primary ring-0 shadow-none' }"
+                  @update:model-value="bookingFormDirty = true"
+                />
               </div>
 
               <template v-if="bookingForm.mode === 'hour'">
@@ -776,32 +776,30 @@ const bookingStepIndex = computed(() => {
                   <label class="block text-[10px] font-bold uppercase tracking-widest text-text-dim">
                     Hora de inicio *
                   </label>
-                  <select
-                    v-model.number="bookingForm.startHour"
+                  <USelect
+                    v-model="bookingForm.startHour"
                     :disabled="bookingLocked"
-                    class="mt-1.5 w-full cursor-pointer rounded-xl border border-stroke bg-base px-3.5 py-2.5 text-xs font-semibold text-text-primary outline-none transition focus:border-accent disabled:opacity-60"
-                    @change="bookingFormDirty = true"
-                  >
-                    <option v-for="h in BOOKING_HOURS.slice(0, -1)" :key="h" :value="h">
-                      {{ String(h).padStart(2, '0') }}:00
-                    </option>
-                  </select>
+                    :items="BOOKING_HOURS.slice(0, -1).map((h) => ({ label: `${String(h).padStart(2, '0')}:00`, value: h }))"
+                    size="md"
+                    class="mt-1.5 w-full"
+                    :ui="{ base: 'h-10 rounded-xl border border-stroke bg-base px-3.5 text-xs font-semibold text-text-primary ring-0 shadow-none' }"
+                    @update:model-value="bookingFormDirty = true"
+                  />
                 </div>
 
                 <div>
                   <label class="block text-[10px] font-bold uppercase tracking-widest text-text-dim">
                     Hora de fin *
                   </label>
-                  <select
-                    v-model.number="bookingForm.endHour"
+                  <USelect
+                    v-model="bookingForm.endHour"
                     :disabled="bookingLocked"
-                    class="mt-1.5 w-full cursor-pointer rounded-xl border border-stroke bg-base px-3.5 py-2.5 text-xs font-semibold text-text-primary outline-none transition focus:border-accent disabled:opacity-60"
-                    @change="bookingFormDirty = true"
-                  >
-                    <option v-for="h in BOOKING_HOURS.slice(1)" :key="h" :value="h">
-                      {{ String(h).padStart(2, '0') }}:00
-                    </option>
-                  </select>
+                    :items="BOOKING_HOURS.slice(1).map((h) => ({ label: `${String(h).padStart(2, '0')}:00`, value: h }))"
+                    size="md"
+                    class="mt-1.5 w-full"
+                    :ui="{ base: 'h-10 rounded-xl border border-stroke bg-base px-3.5 text-xs font-semibold text-text-primary ring-0 shadow-none' }"
+                    @update:model-value="bookingFormDirty = true"
+                  />
                 </div>
               </template>
 

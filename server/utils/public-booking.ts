@@ -8,6 +8,17 @@ export const CLOSE_HOUR = 20; // último slot termina a las 20:00
 export const MAX_DURATION_H = 6;
 export const MAX_ADVANCE_DAYS = 60;
 
+export const TOUR_MAX_WEEKDAY = 6;
+export const TOUR_MAX_SATURDAY = 3;
+export const TOUR_MAX_SUNDAY = 0;
+
+export function maxToursForDate(dateKey: string): number {
+  const day = new Date(`${dateKey}T12:00:00Z`).getUTCDay();
+  if (day === 0) return TOUR_MAX_SUNDAY;
+  if (day === 6) return TOUR_MAX_SATURDAY;
+  return TOUR_MAX_WEEKDAY;
+}
+
 const TZ = 'America/Mexico_City';
 
 /// 'YYYY-MM-DD' de hoy en CDMX.

@@ -480,36 +480,34 @@ onMounted(async () => {
             <label class="mb-1 block text-[10px] font-bold uppercase tracking-widest text-text-dim">
               Nivel de riesgo
             </label>
-            <select
+            <USelect
               v-model="riskFilter"
-              class="w-full rounded-xl border border-stroke bg-base px-3 py-2 text-xs font-semibold text-text-primary outline-none transition focus:border-accent"
-              @change="loadData"
-            >
-              <option value="high">Riesgo Alto (Atención urgente)</option>
-              <option value="medium">Riesgo Medio (Alerta preventiva)</option>
-              <option value="low">Riesgo Bajo (Fidelizados)</option>
-              <option value="all">Todos los niveles</option>
-            </select>
+              :items="[
+                { label: 'Riesgo Alto (Atención urgente)', value: 'high' },
+                { label: 'Riesgo Medio (Alerta preventiva)', value: 'medium' },
+                { label: 'Riesgo Bajo (Fidelizados)', value: 'low' },
+                { label: 'Todos los niveles', value: 'all' },
+              ]"
+              size="md"
+              class="w-full"
+              :ui="{ base: 'h-9 rounded-xl border border-stroke bg-base px-3 text-xs font-semibold text-text-primary ring-0 shadow-none' }"
+              @update:model-value="loadData"
+            />
           </div>
 
           <div>
             <label class="mb-1 block text-[10px] font-bold uppercase tracking-widest text-text-dim">
               Sede
             </label>
-            <select
+            <USelect
               v-model="branchFilter"
               :disabled="isManager && !!session?.branchId"
-              class="w-full rounded-xl border border-stroke bg-base px-3 py-2 text-xs font-semibold text-text-primary outline-none transition focus:border-accent disabled:opacity-50"
-              @change="loadData"
-            >
-              <option
-                v-for="opt in branchOptions"
-                :key="opt.value"
-                :value="opt.value"
-              >
-                {{ opt.label }}
-              </option>
-            </select>
+              :items="branchOptions"
+              size="md"
+              class="w-full"
+              :ui="{ base: 'h-9 rounded-xl border border-stroke bg-base px-3 text-xs font-semibold text-text-primary ring-0 shadow-none' }"
+              @update:model-value="loadData"
+            />
           </div>
 
           <div>

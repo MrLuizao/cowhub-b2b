@@ -31,9 +31,34 @@ export default defineAppConfig({
     },
     modal: {
       slots: {
-        content: 'bg-surface ring-1 ring-stroke rounded-2xl',
+        content: 'bg-surface ring-1 ring-stroke rounded-2xl shadow-none',
         header: 'border-b border-stroke',
         footer: 'border-t border-stroke',
+      },
+    },
+    select: {
+      slots: {
+        base: 'bg-base text-text-primary ring-1 ring-stroke shadow-none',
+        content: 'bg-surface ring-1 ring-stroke shadow-none',
+        item: 'text-text-primary data-highlighted:before:bg-surface-elevated',
+      },
+    },
+    inputNumber: {
+      slots: {
+        increment: 'text-accent',
+        decrement: 'text-accent',
+      },
+    },
+    popover: {
+      slots: {
+        content: 'bg-surface ring-1 ring-stroke shadow-none',
+      },
+    },
+    calendar: {
+      slots: {
+        root: 'bg-surface text-text-primary',
+        headCell: 'text-text-dim',
+        cellTrigger: 'data-selected:bg-accent data-selected:text-base data-today:text-accent',
       },
     },
   },

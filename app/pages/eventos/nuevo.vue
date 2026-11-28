@@ -290,11 +290,7 @@ onMounted(async () => {
           >
             Fecha *
           </span>
-          <input
-            v-model="form.date"
-            type="date"
-            class="mt-1 w-full rounded-xl border border-stroke bg-base px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
-          />
+          <DatePickerInput v-model="form.date" class="mt-1" />
         </label>
         <label class="block">
           <span

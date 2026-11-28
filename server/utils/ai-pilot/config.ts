@@ -29,6 +29,7 @@ export const DEFAULT_AI_PILOT_CONFIG: AiPilotConfig = {
   tools: {
     checkAvailability: true,
     createTour: true,
+    createBooking: true,
   },
   maxAutoTurns: 12,
 };
@@ -71,6 +72,7 @@ export async function getAiPilotConfig(): Promise<AiPilotConfig> {
       tools: {
         checkAvailability: d.tools?.check_availability !== false,
         createTour: d.tools?.create_tour !== false,
+        createBooking: d.tools?.create_booking !== false,
       },
       maxAutoTurns: Math.min(30, Math.max(2, Number(d.max_auto_turns ?? DEFAULT_AI_PILOT_CONFIG.maxAutoTurns) || 12)),
       updatedAt: d.updated_at?.toMillis?.() ?? undefined,
@@ -106,6 +108,10 @@ export async function saveAiPilotConfig(input: Partial<AiPilotConfig>): Promise<
         typeof input.tools?.createTour === 'boolean'
           ? input.tools.createTour
           : current.tools.createTour,
+      createBooking:
+        typeof input.tools?.createBooking === 'boolean'
+          ? input.tools.createBooking
+          : current.tools.createBooking,
     },
     maxAutoTurns:
       typeof input.maxAutoTurns === 'number'
@@ -125,6 +131,7 @@ export async function saveAiPilotConfig(input: Partial<AiPilotConfig>): Promise<
       tools: {
         check_availability: next.tools.checkAvailability,
         create_tour: next.tools.createTour,
+        create_booking: next.tools.createBooking,
       },
       max_auto_turns: next.maxAutoTurns,
       updated_at: new Date(),

@@ -9,7 +9,7 @@ import {
   resolveStaffNotifyEmails,
   sendStaffTopicPush,
 } from '../../utils/public-notify';
-import { genFolio, isValidDateKey, toTourRequest } from '../../utils/public-booking';
+import { genFolio, isValidDateKey, maxToursForDate, todayCDMX, toTourRequest } from '../../utils/public-booking';
 
 interface TourBody {
   name?: string;
@@ -50,6 +50,26 @@ export default defineEventHandler(async (event) => {
   }
   if (preferredDate && !isValidDateKey(preferredDate)) {
     throw createError({ statusCode: 400, statusMessage: 'Fecha inválida' });
+  }
+  if (preferredDate) {
+    if (preferredDate < todayCDMX()) {
+      throw createError({ statusCode: 400, statusMessage: 'La fecha seleccionada ya pasó' });
+    }
+    const maxForDay = maxToursForDate(preferredDate);
+    if (maxForDay === 0) {
+      throw createError({ statusCode: 400, statusMessage: 'Los domingos permanecemos cerrados' });
+    }
+    const existingSnap = await db()
+      .collection('tour_requests')
+      .where('preferred_date', '==', preferredDate)
+      .get();
+    const activeCount = existingSnap.docs.filter((d) => d.data().status !== 'cancelled').length;
+    if (activeCount >= maxForDay) {
+      throw createError({
+        statusCode: 409,
+        statusMessage: 'La fecha seleccionada ya no tiene lugares disponibles para tours',
+      });
+    }
   }
   if (body.privacy_accepted !== true) {
     throw createError({ statusCode: 400, statusMessage: 'Debes aceptar el aviso de privacidad' });

@@ -823,6 +823,7 @@ export interface AiPilotConfig {
   tools: {
     checkAvailability: boolean;
     createTour: boolean;
+    createBooking: boolean;
   };
   maxAutoTurns: number;
   updatedAt?: number;

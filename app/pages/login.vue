@@ -145,12 +145,18 @@ async function submit(): Promise<void> {
             <label for="role" class="text-[10px] font-bold uppercase tracking-widest text-text-dim">
               Perfil (demo)
             </label>
-            <select id="role" v-model="role"
-              class="mt-2 w-full cursor-pointer rounded-xl border border-stroke bg-surface px-4 py-3 text-sm text-text-primary outline-none transition focus:border-accent">
-              <option value="ADMIN">Admin global</option>
-              <option value="MANAGER">Gerente de sede</option>
-              <option value="RECEPTIONIST">Recepcionista</option>
-            </select>
+            <USelect
+              id="role"
+              v-model="role"
+              :items="[
+                { label: 'Admin global', value: 'ADMIN' },
+                { label: 'Gerente de sede', value: 'MANAGER' },
+                { label: 'Recepcionista', value: 'RECEPTIONIST' },
+              ]"
+              size="lg"
+              class="mt-2 w-full"
+              :ui="{ base: 'h-11 rounded-xl border border-stroke bg-surface px-4 text-sm text-text-primary ring-0 shadow-none' }"
+            />
           </div>
 
           <p v-if="errorMessage"

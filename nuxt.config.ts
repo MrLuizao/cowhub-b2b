@@ -7,7 +7,12 @@ export default defineNuxtConfig({
   /* App dark-only: el color-mode module prioriza localStorage sobre
      preference y cualquier valor viejo deja los componentes Nuxt UI en
      light — se desactiva y la clase `dark` va fija en htmlAttrs */
-  ui: { colorMode: false },
+  ui: {
+    colorMode: false,
+    theme: {
+      colors: ['primary', 'secondary', 'accent', 'info', 'success', 'warning', 'error'],
+    },
+  },
 
   css: ['~/assets/css/main.css'],
 

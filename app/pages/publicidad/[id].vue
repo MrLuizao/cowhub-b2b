@@ -1316,15 +1316,10 @@ async function removeAd(): Promise<void> {
               class="text-[10px] font-bold uppercase tracking-widest text-text-dim"
               >Vigencia hasta</span
             >
-            <input
+            <DatePickerInput
               v-model="editForm.endsAt"
-              type="date"
-              class="mt-1 w-full rounded-xl border bg-base px-3 py-2 text-sm text-text-primary outline-none"
-              :class="
-                editEndsExpired
-                  ? 'border-red-400/60 focus:border-red-400'
-                  : 'border-stroke focus:border-accent'
-              "
+              class="mt-1"
+              :button-class="editEndsExpired ? 'border-red-400/60' : ''"
             />
             <p
               v-if="editEndsExpired"
@@ -1607,15 +1602,18 @@ async function removeAd(): Promise<void> {
                 <label class="block text-[10px] font-bold uppercase tracking-widest text-text-dim mb-1">
                   Método de pago
                 </label>
-                <select
+                <USelect
                   v-model="editPaymentMethod"
-                  class="w-full rounded-xl border border-stroke bg-base px-3 py-2 text-sm text-text-primary outline-none transition focus:border-emerald-400 cursor-pointer"
-                >
-                  <option value="cash">Efectivo en caja</option>
-                  <option value="terminal">Terminal / Tarjeta</option>
-                  <option value="transfer">Transferencia bancaria</option>
-                  <option value="card">Tarjeta manual</option>
-                </select>
+                  :items="[
+                    { label: 'Efectivo en caja', value: 'cash' },
+                    { label: 'Terminal / Tarjeta', value: 'terminal' },
+                    { label: 'Transferencia bancaria', value: 'transfer' },
+                    { label: 'Tarjeta manual', value: 'card' },
+                  ]"
+                  size="lg"
+                  class="w-full"
+                  :ui="{ base: 'h-10 rounded-xl border border-stroke bg-base px-3 text-sm text-text-primary ring-0 shadow-none' }"
+                />
               </div>
             </div>
 
@@ -1759,11 +1757,7 @@ async function removeAd(): Promise<void> {
 
             <div class="mt-2.5 flex items-center gap-2">
               <span class="text-[10px] font-bold text-text-dim uppercase">O fecha exacta:</span>
-              <input
-                v-model="reactivateCustomDate"
-                type="date"
-                class="flex-1 rounded-xl border border-stroke bg-base px-3 py-1.5 text-xs text-text-primary outline-none transition focus:border-accent"
-              />
+              <DatePickerInput v-model="reactivateCustomDate" class="flex-1" button-class="h-9 text-xs" />
             </div>
 
             <div class="mt-2 flex items-center justify-between text-[11px] font-semibold text-text-muted bg-surface/50 p-2.5 rounded-lg border border-stroke">
@@ -1830,15 +1824,18 @@ async function removeAd(): Promise<void> {
                 <label class="block text-[10px] font-bold uppercase tracking-widest text-text-dim mb-1">
                   Método de pago
                 </label>
-                <select
+                <USelect
                   v-model="paymentMethod"
-                  class="w-full rounded-xl border border-stroke bg-base px-3 py-2 text-sm text-text-primary outline-none transition focus:border-emerald-400 cursor-pointer"
-                >
-                  <option value="cash">Efectivo en caja</option>
-                  <option value="terminal">Terminal / Tarjeta</option>
-                  <option value="transfer">Transferencia bancaria</option>
-                  <option value="card">Tarjeta manual</option>
-                </select>
+                  :items="[
+                    { label: 'Efectivo en caja', value: 'cash' },
+                    { label: 'Terminal / Tarjeta', value: 'terminal' },
+                    { label: 'Transferencia bancaria', value: 'transfer' },
+                    { label: 'Tarjeta manual', value: 'card' },
+                  ]"
+                  size="lg"
+                  class="w-full"
+                  :ui="{ base: 'h-10 rounded-xl border border-stroke bg-base px-3 text-sm text-text-primary ring-0 shadow-none' }"
+                />
               </div>
             </div>
 

@@ -730,25 +730,25 @@ async function deleteMember(): Promise<void> {
             <span class="text-[10px] font-bold uppercase tracking-widest text-text-dim">
               Sexo
             </span>
-            <select
-              v-model="editForm.sex"
-              class="mt-1 w-full cursor-pointer rounded-xl border border-stroke bg-base px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
-            >
-              <option value="">Sin especificar</option>
-              <option value="M">Masculino</option>
-              <option value="F">Femenino</option>
-              <option value="O">Otro</option>
-            </select>
+            <USelect
+              :model-value="editForm.sex || undefined"
+              :items="[
+                { label: 'Masculino', value: 'M' },
+                { label: 'Femenino', value: 'F' },
+                { label: 'Otro', value: 'O' },
+              ]"
+              placeholder="Sin especificar"
+              size="lg"
+              class="mt-1 w-full"
+              :ui="{ base: 'h-10 rounded-xl border border-stroke bg-base px-3 text-sm text-text-primary ring-0 shadow-none' }"
+              @update:model-value="(v) => (editForm.sex = String(v ?? ''))"
+            />
           </label>
           <label class="block">
             <span class="text-[10px] font-bold uppercase tracking-widest text-text-dim">
               Fecha de nacimiento
             </span>
-            <input
-              v-model="editForm.birthDate"
-              type="date"
-              class="mt-1 w-full rounded-xl border border-stroke bg-base px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
-            />
+            <DatePickerInput v-model="editForm.birthDate" class="mt-1" />
           </label>
         </div>
         <div class="flex justify-end gap-2">
@@ -776,17 +776,9 @@ async function deleteMember(): Promise<void> {
           Historial de pagos
         </h2>
         <div class="flex flex-wrap items-center gap-2">
-          <input
-            v-model="payFrom"
-            type="date"
-            class="rounded-xl border border-stroke bg-base px-3 py-1.5 text-[11px] text-text-primary outline-none focus:border-accent"
-          />
+          <DatePickerInput v-model="payFrom" class="w-36" button-class="h-8 text-[11px]" />
           <span class="text-[10px] font-bold text-text-dim">a</span>
-          <input
-            v-model="payTo"
-            type="date"
-            class="rounded-xl border border-stroke bg-base px-3 py-1.5 text-[11px] text-text-primary outline-none focus:border-accent"
-          />
+          <DatePickerInput v-model="payTo" class="w-36" button-class="h-8 text-[11px]" />
           <button
             class="flex cursor-pointer items-center gap-1.5 rounded-full border border-stroke px-3 py-1.5 text-[10px] font-black text-text-muted transition hover:border-accent hover:text-accent"
             :disabled="filteredPayments.length === 0"
@@ -892,17 +884,9 @@ async function deleteMember(): Promise<void> {
           Accesos
         </h2>
         <div class="flex flex-wrap items-center gap-2">
-          <input
-            v-model="ciFrom"
-            type="date"
-            class="rounded-xl border border-stroke bg-base px-3 py-1.5 text-[11px] text-text-primary outline-none focus:border-accent"
-          />
+          <DatePickerInput v-model="ciFrom" class="w-36" button-class="h-8 text-[11px]" />
           <span class="text-[10px] font-bold text-text-dim">a</span>
-          <input
-            v-model="ciTo"
-            type="date"
-            class="rounded-xl border border-stroke bg-base px-3 py-1.5 text-[11px] text-text-primary outline-none focus:border-accent"
-          />
+          <DatePickerInput v-model="ciTo" class="w-36" button-class="h-8 text-[11px]" />
           <button
             class="flex cursor-pointer items-center gap-1.5 rounded-full border border-stroke px-3 py-1.5 text-[10px] font-black text-text-muted transition hover:border-accent hover:text-accent disabled:opacity-40"
             :disabled="filteredCheckIns.length === 0"

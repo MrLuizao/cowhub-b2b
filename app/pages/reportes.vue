@@ -884,11 +884,7 @@ function exportCsv(): void {
           >
             Desde
           </span>
-          <input
-            v-model="fromDate"
-            type="date"
-            class="mt-1 w-full rounded-xl border border-stroke bg-base px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
-          />
+          <DatePickerInput v-model="fromDate" class="mt-1" />
         </label>
         <label class="block">
           <span
@@ -896,11 +892,7 @@ function exportCsv(): void {
           >
             Hasta
           </span>
-          <input
-            v-model="toDate"
-            type="date"
-            class="mt-1 w-full rounded-xl border border-stroke bg-base px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
-          />
+          <DatePickerInput v-model="toDate" class="mt-1" />
         </label>
       </div>
 

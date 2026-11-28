@@ -583,14 +583,13 @@ onMounted(load);
                   class="text-[10px] font-bold uppercase tracking-widest text-text-dim"
                   >Icono</span
                 >
-                <select
+                <USelect
                   v-model="form.icon"
-                  class="mt-1 w-full rounded-xl border border-stroke bg-base px-4 py-2 text-sm text-text-primary outline-none focus:border-accent"
-                >
-                  <option v-for="i in ICON_OPTIONS" :key="i" :value="i">
-                    {{ i }}
-                  </option>
-                </select>
+                  :items="ICON_OPTIONS"
+                  size="lg"
+                  class="mt-1 w-full"
+                  :ui="{ base: 'h-10 rounded-xl border border-stroke bg-base px-4 text-sm text-text-primary ring-0 shadow-none' }"
+                />
               </label>
             </div>
             <p v-if="formError" class="text-xs font-bold text-rose-400">

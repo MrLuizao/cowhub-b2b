@@ -432,18 +432,13 @@ async function deleteActivity(): Promise<void> {
             <span class="text-[10px] font-bold uppercase tracking-widest text-text-dim">
               Sala{{ isAdmin ? '' : ' (mi sede)' }}
             </span>
-            <select
+            <USelect
               v-model="editForm.room"
-              class="mt-1 w-full cursor-pointer rounded-xl border border-stroke bg-base px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
-            >
-              <option
-                v-for="sp in spaces"
-                :key="sp.id"
-                :value="sp.name"
-              >
-                {{ sp.name }} ({{ sp.capacity }} pers.)
-              </option>
-            </select>
+              :items="spaces.map((sp) => ({ label: `${sp.name} (${sp.capacity} pers.)`, value: sp.name }))"
+              size="lg"
+              class="mt-1 w-full"
+              :ui="{ base: 'h-10 rounded-xl border border-stroke bg-base px-3 text-sm text-text-primary ring-0 shadow-none' }"
+            />
           </label>
           <label v-if="isAdmin" class="block">
             <span class="text-[10px] font-bold uppercase tracking-widest text-text-dim">

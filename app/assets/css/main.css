@@ -47,6 +47,18 @@
 :root,
 html.dark {
   color-scheme: dark;
+  --ui-bg: var(--color-base);
+  --ui-bg-muted: var(--color-surface);
+  --ui-bg-elevated: var(--color-surface-elevated);
+  --ui-bg-accented: var(--color-surface-elevated);
+  --ui-text: var(--color-text-primary);
+  --ui-text-toned: var(--color-text-secondary);
+  --ui-text-muted: var(--color-text-dim);
+  --ui-text-highlighted: var(--color-text-primary);
+  --ui-border: var(--color-stroke);
+  --ui-border-muted: var(--color-stroke);
+  --ui-border-accented: var(--color-accent);
+  --ui-primary: var(--color-accent);
 }
 
 /* Warm Light Theme */

@@ -1,9 +1,16 @@
 import type { AiPilotConfig } from '#shared/types';
 
 import { db, FieldValue } from '../db';
-import { sendPublicTourReceivedEmail, sendPublicTourStaffNotice } from '../mail';
+import {
+  sendPublicBookingReceivedEmail,
+  sendPublicBookingStaffNotice,
+  sendPublicTourReceivedEmail,
+  sendPublicTourStaffNotice,
+} from '../mail';
 import {
   CLOSE_HOUR,
+  MAX_ADVANCE_DAYS,
+  MAX_DURATION_H,
   OPEN_HOUR,
   genFolio,
   isValidDateKey,
@@ -180,6 +187,48 @@ export function getCowhubToolDeclarations(cfg: AiPilotConfig): GeminiFunctionDec
     });
   }
 
+  if (cfg.tools.createBooking) {
+    declarations.push({
+      name: 'create_space_booking',
+      description:
+        'Crea una reserva real de espacio en COW-HUB Metepec (folio CH-XXXXXX, estado pendiente de confirmación). Verifica antes disponibilidad con check_space_availability y asegúrate de tener space_id, fecha, modalidad (hour/day), horario si es por hora, personas, nombre y correo.',
+      parameters: {
+        type: 'OBJECT',
+        properties: {
+          space_id: {
+            type: 'STRING',
+            description: 'ID exacto del espacio obtenido del catálogo (ej. sala-consejo).',
+          },
+          date: {
+            type: 'STRING',
+            description: 'Fecha de la reserva en formato YYYY-MM-DD (hoy o futura).',
+          },
+          mode: {
+            type: 'STRING',
+            description: '"hour" para reserva por horas o "day" para día completo (default "hour").',
+          },
+          start_hour: {
+            type: 'INTEGER',
+            description: `Hora entera de inicio (${OPEN_HOUR} a ${CLOSE_HOUR - 1}), obligatoria cuando mode es "hour".`,
+          },
+          duration_hours: {
+            type: 'INTEGER',
+            description: `Duración en horas enteras (1 a ${MAX_DURATION_H}), obligatoria cuando mode es "hour".`,
+          },
+          people: {
+            type: 'INTEGER',
+            description: 'Número de personas que usarán el espacio (mínimo 1).',
+          },
+          name: { type: 'STRING', description: 'Nombre completo del responsable.' },
+          email: { type: 'STRING', description: 'Correo electrónico válido para enviar el folio.' },
+          phone: { type: 'STRING', description: 'Teléfono o WhatsApp de contacto (opcional).' },
+          company: { type: 'STRING', description: 'Nombre de la empresa (opcional).' },
+        },
+        required: ['space_id', 'date', 'name', 'email'],
+      },
+    });
+  }
+
   declarations.push({
     name: 'reschedule_tour_or_booking',
     description:
@@ -234,6 +283,23 @@ export interface ToolExecutionContext {
   dryRun?: boolean;
   defaultVisitorName?: string;
   defaultVisitorPhone?: string | null;
+}
+
+function hasSlotConflict(
+  docs: FirebaseFirestore.QueryDocumentSnapshot[],
+  mode: 'hour' | 'day',
+  startHour: number | null,
+  endHour: number | null,
+): boolean {
+  const intervals = docs.map((d) => {
+    const b = d.data();
+    return {
+      mode: b.mode === 'day' ? 'day' : 'hour',
+      startHour: (b.start_hour ?? null) as number | null,
+      endHour: (b.end_hour ?? null) as number | null,
+    };
+  });
+  return mode === 'day' ? intervals.length > 0 : overlaps(startHour!, endHour!, intervals);
 }
 
 /// Ejecuta la herramienta solicitada por Gemini contra datos reales de Firestore.
@@ -418,6 +484,209 @@ export async function executeCowhubTool(
         folio,
         preferredDate,
         people,
+        email,
+      },
+    };
+  }
+
+  if (name === 'create_space_booking') {
+    const spaceId = String(args.space_id ?? '').trim();
+    const date = String(args.date ?? '').trim();
+    const mode: 'hour' | 'day' = args.mode === 'day' ? 'day' : 'hour';
+    const startHour = Number(args.start_hour);
+    const duration = Number(args.duration_hours ?? 1);
+    const people = Math.max(1, Number(args.people ?? 1) || 1);
+    const visitorName = String(args.name ?? ctx.defaultVisitorName ?? '').trim();
+    const email = String(args.email ?? '').trim().toLowerCase();
+    const phone = String(args.phone ?? ctx.defaultVisitorPhone ?? '').trim() || null;
+    const company = String(args.company ?? '').trim() || null;
+
+    if (!spaceId || !isValidDateKey(date)) {
+      return { result: { error: 'space_id y date (YYYY-MM-DD) son requeridos' } };
+    }
+
+    const today = todayCDMX();
+    const maxDate = new Date(Date.now() + MAX_ADVANCE_DAYS * 86400_000)
+      .toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' });
+    if (date < today || date > maxDate) {
+      return { result: { error: `La fecha debe estar entre ${today} y ${maxDate}` } };
+    }
+    if (visitorName.length < 3) {
+      return { result: { error: 'Falta el nombre completo del responsable (mínimo 3 caracteres)' } };
+    }
+    if (!EMAIL_RE.test(email)) {
+      return { result: { error: 'Falta un correo electrónico válido para enviar el folio de reserva' } };
+    }
+    if (phone && !PHONE_RE.test(phone)) {
+      return { result: { error: 'El teléfono ingresado no es válido' } };
+    }
+
+    const spaceSnap = await db().collection('spaces').doc(spaceId).get();
+    if (!spaceSnap.exists || spaceSnap.data()?.active !== true) {
+      return { result: { error: `El espacio "${spaceId}" no existe o no está disponible` } };
+    }
+    const space = spaceSnap.data()!;
+    const maxCapacity = Number(space.capacity ?? 1);
+    if (people < 1 || people > maxCapacity) {
+      return {
+        result: {
+          error: `La capacidad máxima de ${space.name ?? spaceId} es de ${maxCapacity} personas`,
+        },
+      };
+    }
+
+    let startHourN: number | null = null;
+    let endHourN: number | null = null;
+    if (mode === 'hour') {
+      if (!Number.isInteger(startHour) || startHour < OPEN_HOUR || startHour >= CLOSE_HOUR) {
+        return {
+          result: { error: `Hora de inicio inválida (horario de ${OPEN_HOUR}:00 a ${CLOSE_HOUR}:00)` },
+        };
+      }
+      if (!Number.isInteger(duration) || duration < 1 || duration > MAX_DURATION_H) {
+        return {
+          result: { error: `La duración debe ser entre 1 y ${MAX_DURATION_H} horas` },
+        };
+      }
+      startHourN = startHour;
+      endHourN = startHour + duration;
+      if (endHourN > CLOSE_HOUR) {
+        return {
+          result: { error: `La reserva debe terminar antes de las ${CLOSE_HOUR}:00` },
+        };
+      }
+    }
+
+    const totalMxn =
+      mode === 'day'
+        ? Number(space.price_per_day ?? Number(space.price_per_hour ?? 0) * (CLOSE_HOUR - OPEN_HOUR))
+        : Number(space.price_per_hour ?? 0) * (duration || 1);
+
+    const timeLabel = mode === 'day' ? 'Día completo' : `${startHourN}:00 - ${endHourN}:00`;
+    const spaceName = String(space.name ?? spaceId);
+
+    if (ctx.dryRun) {
+      const existing = await db()
+        .collection('space_bookings')
+        .where('space_id', '==', spaceId)
+        .where('date', '==', date)
+        .where('status', 'in', ['pending', 'confirmed'])
+        .get();
+      if (hasSlotConflict(existing.docs, mode, startHourN, endHourN)) {
+        return {
+          result: {
+            error: `El espacio ${spaceName} ya está ocupado en ese horario el ${date}. Consulta check_space_availability para ofrecer otro horario.`,
+          },
+        };
+      }
+      return {
+        result: {
+          simulated: true,
+          created: true,
+          folio: 'CH-DEMO01',
+          spaceName,
+          date,
+          mode,
+          timeLabel,
+          people,
+          totalMxn,
+          status: 'pending',
+          email,
+        },
+      };
+    }
+
+    const bookingsRef = db().collection('space_bookings');
+    const folio = genFolio('CH');
+    const clash = await db().runTransaction(async (tx) => {
+      const existing = await tx.get(
+        bookingsRef
+          .where('space_id', '==', spaceId)
+          .where('date', '==', date)
+          .where('status', 'in', ['pending', 'confirmed']),
+      );
+      if (hasSlotConflict(existing.docs, mode, startHourN, endHourN)) {
+        return true;
+      }
+      tx.set(bookingsRef.doc(folio), {
+        folio,
+        space_id: spaceId,
+        space_name: spaceName,
+        date,
+        mode,
+        start_hour: startHourN,
+        end_hour: endHourN,
+        guests: { name: visitorName, email, phone, company },
+        people,
+        total_mxn: totalMxn,
+        status: 'pending',
+        source: 'ai_pilot',
+        notes: 'Reservado vía chat en vivo',
+        created_at: FieldValue.serverTimestamp(),
+      });
+      return false;
+    });
+
+    if (clash) {
+      return {
+        result: {
+          error: `El horario seleccionado en ${spaceName} ya no está disponible. Consulta check_space_availability para ofrecer otra hora.`,
+        },
+      };
+    }
+
+    void (async () => {
+      try {
+        const staffEmails = await resolveStaffNotifyEmails();
+        const agendaUrl = 'https://cowhub-b2b.vercel.app/agenda-web';
+        await Promise.allSettled([
+          sendPublicBookingReceivedEmail({
+            to: email,
+            name: visitorName,
+            folio,
+            spaceName,
+            date,
+            timeLabel,
+            people,
+            totalMxn,
+          }),
+          ...staffEmails.map((to) =>
+            sendPublicBookingStaffNotice({
+              to,
+              folio,
+              spaceName,
+              date,
+              timeLabel,
+              people,
+              totalMxn,
+              guestName: visitorName,
+              guestEmail: email,
+              guestPhone: phone,
+              agendaUrl,
+            }),
+          ),
+          sendStaffTopicPush({
+            title: `Reserva creada por IA (${folio})`,
+            body: `${visitorName} · ${spaceName} (${date} · ${timeLabel})`,
+            data: { kind: 'booking', folio, route: '/agenda-web' },
+          }),
+        ]);
+      } catch {
+        /* notificaciones best-effort */
+      }
+    })();
+
+    return {
+      result: {
+        created: true,
+        folio,
+        spaceName,
+        date,
+        mode,
+        timeLabel,
+        people,
+        totalMxn,
+        status: 'pending',
         email,
       },
     };

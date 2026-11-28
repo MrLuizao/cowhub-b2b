@@ -43,9 +43,11 @@ const editForm = ref({
   pricePerHour: 300,
   pricePerDay: 2000 as number | null,
   image: '',
+  gallery: [] as string[],
   amenitiesStr: '',
   branchIds: [] as string[],
   featured: false,
+  sort: 10,
 });
 
 const saveModalOpen = ref(false);
@@ -132,9 +134,11 @@ function startEdit(): void {
     pricePerHour: space.value.pricePerHour,
     pricePerDay: space.value.pricePerDay,
     image: space.value.image,
+    gallery: [...(space.value.gallery || [])],
     amenitiesStr: (space.value.amenities || []).join(', '),
     branchIds: [...(space.value.branchIds || [])],
     featured: space.value.featured,
+    sort: space.value.sort ?? 10,
   };
   editing.value = true;
 }
@@ -166,9 +170,11 @@ async function confirmSave(): Promise<void> {
         pricePerHour: Number(editForm.value.pricePerHour),
         pricePerDay: editForm.value.pricePerDay ? Number(editForm.value.pricePerDay) : null,
         image: editForm.value.image.trim(),
+        gallery: editForm.value.gallery,
         amenities,
         branchIds: editForm.value.branchIds,
         featured: editForm.value.featured,
+        sort: Number(editForm.value.sort) || 10,
       },
     });
     space.value = updated;
@@ -384,14 +390,13 @@ async function confirmDelete(): Promise<void> {
             <span class="text-[10px] font-bold uppercase tracking-widest text-text-dim">
               Categoría
             </span>
-            <select
+            <USelect
               v-model="editForm.category"
-              class="mt-1 w-full cursor-pointer rounded-xl border border-stroke bg-base px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
-            >
-              <option v-for="c in CATEGORY_OPTIONS" :key="c.value" :value="c.value">
-                {{ c.label }}
-              </option>
-            </select>
+              :items="CATEGORY_OPTIONS"
+              size="lg"
+              class="mt-1 w-full"
+              :ui="{ base: 'h-10 rounded-xl border border-stroke bg-base px-3 text-sm text-text-primary ring-0 shadow-none' }"
+            />
           </label>
           <label class="block">
             <span class="text-[10px] font-bold uppercase tracking-widest text-text-dim">
@@ -470,7 +475,7 @@ async function confirmDelete(): Promise<void> {
           </div>
           <div class="sm:col-span-2">
             <span class="text-[10px] font-bold uppercase tracking-widest text-text-dim">
-              Imagen
+              Imagen principal
             </span>
             <ImagePicker
               v-model="editForm.image"
@@ -479,6 +484,23 @@ async function confirmDelete(): Promise<void> {
               class="mt-1"
             />
           </div>
+          <div class="sm:col-span-2">
+            <span class="text-[10px] font-bold uppercase tracking-widest text-text-dim">
+              Galería de fotos
+            </span>
+            <GalleryEditor v-model="editForm.gallery" class="mt-1" />
+          </div>
+          <label class="block">
+            <span class="text-[10px] font-bold uppercase tracking-widest text-text-dim">
+              Orden en catálogo
+            </span>
+            <input
+              v-model.number="editForm.sort"
+              type="number"
+              min="1"
+              class="mt-1 w-full rounded-xl border border-stroke bg-base px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
+            />
+          </label>
           <div class="flex items-center justify-between sm:col-span-2 pt-2">
             <span class="text-xs font-bold text-text-muted">
               Destacar en el portal público
